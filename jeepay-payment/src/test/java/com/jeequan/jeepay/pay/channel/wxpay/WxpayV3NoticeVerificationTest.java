@@ -41,7 +41,7 @@ class WxpayV3NoticeVerificationTest {
         config.setMchId("synthetic-mch");
         config.setCertSerialNo("synthetic-serial");
         config.setApiV3Key(API_KEY);
-        config.setPrivateKeyContent(pem("PRIVATE KEY", pair.getPrivate().getEncoded()).getBytes(StandardCharsets.UTF_8));
+        config.setPrivateKeyContent(pem("PRIVATE KEY", keyPair().getPrivate().getEncoded()).getBytes(StandardCharsets.UTF_8));
         config.setPublicKeyContent(pem("PUBLIC KEY", pair.getPublic().getEncoded()).getBytes(StandardCharsets.UTF_8));
         config.setPublicKeyId(PUBLIC_KEY_ID);
         WxPayService service = new WxPayServiceImpl();
