@@ -236,6 +236,12 @@ public class SysUserController extends CommonCtrl {
 			throw new BizException("该操作员不存在！");
 		}
 
+		// 删除会同时修改认证和用户记录，必须先核对租户及所属系统。
+		if (!CS.SYS_TYPE.MCH.equals(sysUser.getSysType())
+				|| !getCurrentMchNo().equals(sysUser.getBelongInfoId())) {
+			throw new BizException(ApiCodeEnum.SYS_PERMISSION_ERROR);
+		}
+
 		//判断是否自己删除自己
 		if(recordId.equals(getCurrentUser().getSysUser().getSysUserId())){
 			throw new BizException("系统不允许删除当前登陆用户！");
