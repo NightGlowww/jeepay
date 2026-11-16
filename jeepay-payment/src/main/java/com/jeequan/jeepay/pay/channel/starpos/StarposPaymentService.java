@@ -15,7 +15,6 @@ import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
-import java.net.URI;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -33,7 +32,7 @@ public class StarposPaymentService extends AbstractPaymentService {
     static final String SUCCESS_CODE = "000000";
     static final String UNKNOWN_CODE = "-80000";
     static final String CONFIG_ERROR_CODE = "STARPOS_CONFIG_ERROR";
-    static final int MAX_REMARK_LENGTH = 128;
+    static final int MAX_REMARK_LENGTH = 100;
 
     @Override
     public String getIfCode() {
@@ -123,9 +122,9 @@ public class StarposPaymentService extends AbstractPaymentService {
         fields.put("agetId", params.getAgetId());
         fields.put("custId", params.getCustId());
         fields.put("version", params.getVersion());
-        fields.put("timeStamp", String.valueOf(System.currentTimeMillis()));
+        fields.put("timeStamp", StarposConfig.requestTimestamp());
         fields.put("orderNo", payOrder.getPayOrderId());
-        fields.put("txamt", payOrder.getAmount());
+        fields.put("txamt", String.valueOf(payOrder.getAmount()));
         fields.put("title", payOrder.getSubject());
         fields.put("remark", controlledRemark(payOrder));
 
@@ -138,9 +137,9 @@ public class StarposPaymentService extends AbstractPaymentService {
         if (remark == null) {
             return "";
         }
-        return remark.length() <= MAX_REMARK_LENGTH
+        return remark.codePointCount(0, remark.length()) <= MAX_REMARK_LENGTH
                 ? remark
-                : remark.substring(0, MAX_REMARK_LENGTH);
+                : remark.substring(0, remark.offsetByCodePoints(0, MAX_REMARK_LENGTH));
     }
 
     private StarposPayResult mapResponse(
@@ -164,13 +163,15 @@ public class StarposPaymentService extends AbstractPaymentService {
 
         if (SUCCESS_CODE.equals(code)) {
             String cashierUrl = response.getString("data");
-            if (!isCashierUrlForEnvironment(cashierUrl, params)) {
-                retMsg.setChannelState(ChannelRetMsg.ChannelState.CONFIRM_FAIL);
-                retMsg.setChannelErrMsg("星驿付收银链接不是当前环境的 HTTPS 地址");
+            if (!StarposConfig.isCashierUrlForOrder(cashierUrl, params, payOrder.getPayOrderId())) {
+                retMsg.setChannelState(ChannelRetMsg.ChannelState.UNKNOWN);
+                retMsg.setNeedQuery(true);
+                retMsg.setChannelErrMsg("星驿付收银链接与当前环境或订单不匹配");
                 return new StarposPayResult(retMsg, null);
             }
-            retMsg.setChannelState(ChannelRetMsg.ChannelState.CONFIRM_SUCCESS);
-            retMsg.setChannelOrderId(payOrder.getPayOrderId());
+            // 取码成功只表示等待用户付款，不能触发平台的支付成功处理。
+            retMsg.setChannelState(ChannelRetMsg.ChannelState.WAITING);
+            retMsg.setNeedQuery(true);
             return new StarposPayResult(retMsg, cashierUrl);
         }
 
@@ -200,27 +201,6 @@ public class StarposPaymentService extends AbstractPaymentService {
             log.debug("星驿付下单结果未知：{}", message, cause);
         }
         return new StarposPayResult(retMsg, null);
-    }
-
-    private boolean isCashierUrlForEnvironment(
-            String cashierUrl,
-            StarposNormalMchParams params
-    ) {
-        if (StringUtils.isBlank(cashierUrl)) {
-            return false;
-        }
-        try {
-            URI cashierUri = URI.create(cashierUrl);
-            URI baseUri = URI.create(StarposConfig.resolveBaseUrl(params));
-            return "https".equalsIgnoreCase(cashierUri.getScheme())
-                    && cashierUri.getUserInfo() == null
-                    && cashierUri.getPort() == -1
-                    && cashierUri.getQuery() == null
-                    && cashierUri.getFragment() == null
-                    && baseUri.getHost().equalsIgnoreCase(cashierUri.getHost());
-        } catch (IllegalArgumentException e) {
-            return false;
-        }
     }
 
     private String maskOrderNo(String orderNo) {

@@ -31,7 +31,7 @@ public class StarposQr extends StarposPaymentService {
         StarposQrOrderRS response = ApiResBuilder.buildSuccess(StarposQrOrderRS.class);
         response.setChannelRetMsg(result.getChannelRetMsg());
         if (result.getChannelRetMsg().getChannelState()
-                == ChannelRetMsg.ChannelState.CONFIRM_SUCCESS) {
+                == ChannelRetMsg.ChannelState.WAITING) {
             response.setPayUrl(result.getCashierUrl());
         }
         return response;

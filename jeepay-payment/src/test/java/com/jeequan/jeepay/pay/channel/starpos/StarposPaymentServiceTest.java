@@ -60,7 +60,7 @@ class StarposPaymentServiceTest {
             server.enqueueJson(
                     200,
                     "{\"code\":\"000000\",\"message\":\"成功\","
-                            + "\"data\":\"https://xyf-server-test.postar.cn/cashier/ORDER-1001\"}"
+                            + "\"data\":\"https://yyfwebcs.postar.cn/postalpay/p/generateCode/standard?threeOrderNo=ORDER-1001&agetId=AGENT-1001&orderDate=20261116\"}"
             );
 
             PayOrder payOrder = payOrder("ORDER-1001", 12345L, "商品标题", "这是商品描述");
@@ -68,10 +68,10 @@ class StarposPaymentServiceTest {
 
             assertEquals(CS.PAY_DATA_TYPE.PAY_URL, response.buildPayDataType());
             assertEquals(
-                    "https://xyf-server-test.postar.cn/cashier/ORDER-1001",
+                    "https://yyfwebcs.postar.cn/postalpay/p/generateCode/standard?threeOrderNo=ORDER-1001&agetId=AGENT-1001&orderDate=20261116",
                     response.buildPayData()
             );
-            assertEquals(ChannelRetMsg.ChannelState.CONFIRM_SUCCESS,
+            assertEquals(ChannelRetMsg.ChannelState.WAITING,
                     response.getChannelRetMsg().getChannelState());
 
             StarposTestServer.RecordedRequest request = server.takeRequest();
@@ -81,11 +81,12 @@ class StarposPaymentServiceTest {
             assertEquals("CUST-1001", body.getString("custId"));
             assertEquals("1.0.0", body.getString("version"));
             assertEquals("ORDER-1001", body.getString("orderNo"));
-            assertEquals(12345L, body.getLongValue("txamt"));
+            assertEquals("12345", body.get("txamt"));
             assertEquals("商品标题", body.getString("title"));
             assertEquals("这是商品描述", body.getString("remark"));
             assertFalse(body.containsKey("asyncNotify"));
-            assertTrue(!body.getString("timeStamp").isBlank());
+            assertTrue(body.getString("timeStamp").matches("[0-9]{14}"));
+            assertTrue(response.getChannelRetMsg().isNeedQuery());
             assertTrue(!body.getString("sign").isBlank());
 
             assertEquals(
@@ -96,24 +97,43 @@ class StarposPaymentServiceTest {
     }
 
     @Test
+    void shouldAcceptOfficialCashierUrlAndBindItToRequestedOrder() throws Exception {
+        // 官方 getCodeUrl 响应结构；订单和机构标识替换为本地合成值。
+        String cashierUrl = "https://yyfwebcs.postar.cn/postalpay/p/generateCode/standard"
+                + "?threeOrderNo=ORDER-OFFICIAL-1001&agetId=AGENT-1001&orderDate=20251023";
+        try (StarposTestServer server = StarposTestServer.start()) {
+            server.enqueueJson(200, "{\"code\":\"000000\",\"data\":\"" + cashierUrl + "\"}");
+            StarposQrOrderRS response = pay(service(server, Duration.ofSeconds(5)),
+                    payOrder("ORDER-OFFICIAL-1001", 100L, "标题", "描述"));
+            assertEquals(cashierUrl, response.buildPayData());
+            assertEquals(ChannelRetMsg.ChannelState.WAITING, response.getChannelRetMsg().getChannelState());
+            assertTrue(response.getChannelRetMsg().isNeedQuery());
+            JSONObject body = JSONObject.parseObject(server.takeRequest().getJsonBody());
+            assertEquals("ORDER-OFFICIAL-1001", body.getString("orderNo"));
+            assertEquals(StarposSigner.sha256Hex(StarposSigner.canonicalJson(withoutSign(body))),
+                    decryptRequestHash(body.getString("sign"), KEY_PAIR.getPrivate()));
+        }
+    }
+
+    @Test
     void shouldLimitRemarkLengthWithoutChangingOrderMapping() throws Exception {
         try (StarposTestServer server = StarposTestServer.start()) {
             server.enqueueJson(
                     200,
-                    "{\"code\":\"000000\",\"data\":\"https://xyf-server-test.postar.cn/cashier/ORDER-1002\"}"
+                    "{\"code\":\"000000\",\"data\":\"https://yyfwebcs.postar.cn/postalpay/p/generateCode/standard?threeOrderNo=ORDER-1002&agetId=AGENT-1001&orderDate=20261116\"}"
             );
 
-            String longBody = "描述".repeat(300);
+            String longBody = "😀".repeat(300);
             PayOrder payOrder = payOrder("ORDER-1002", 1L, "标题", longBody);
             StarposQrOrderRS response = pay(service(server, Duration.ofSeconds(5)), payOrder);
 
-            assertEquals(ChannelRetMsg.ChannelState.CONFIRM_SUCCESS,
+            assertEquals(ChannelRetMsg.ChannelState.WAITING,
                     response.getChannelRetMsg().getChannelState());
             JSONObject body = JSONObject.parseObject(server.takeRequest().getJsonBody());
             assertEquals("ORDER-1002", body.getString("orderNo"));
             assertEquals(1L, body.getLongValue("txamt"));
             assertEquals("标题", body.getString("title"));
-            assertTrue(body.getString("remark").length() <= 128);
+            assertEquals(100, body.getString("remark").codePointCount(0, body.getString("remark").length()));
         }
     }
 
@@ -183,7 +203,12 @@ class StarposPaymentServiceTest {
     @ParameterizedTest
     @ValueSource(strings = {
             "http://xyf-server-test.postar.cn/cashier/ORDER-BAD",
-            "https://xyzscxm.postar.cn/cashier/ORDER-BAD"
+            "https://deccapayuat.postar.cn/postalpay/p/generateCode/standard?threeOrderNo=ORDER-BAD-LINK&agetId=AGENT-1001&orderDate=20261116",
+            "https://yyfwebcs.postar.cn.evil.example/postalpay/p/generateCode/standard?threeOrderNo=ORDER-BAD-LINK&agetId=AGENT-1001&orderDate=20261116",
+            "https://yyfwebcs.postar.cn/other?threeOrderNo=ORDER-BAD-LINK&agetId=AGENT-1001&orderDate=20261116",
+            "https://yyfwebcs.postar.cn/postalpay/p/generateCode/standard?threeOrderNo=OTHER&agetId=AGENT-1001&orderDate=20261116",
+            "https://yyfwebcs.postar.cn/postalpay/p/generateCode/standard?threeOrderNo=ORDER-BAD-LINK&agetId=OTHER&orderDate=20261116",
+            "https://yyfwebcs.postar.cn/postalpay/p/generateCode/standard?threeOrderNo=ORDER-BAD-LINK&agetId=AGENT-1001&orderDate=20261116&threeOrderNo=OTHER"
     })
     void shouldRejectCashierLinkThatIsNotHttpsOrCurrentEnvironmentHost(String cashierUrl)
             throws Exception {
@@ -193,7 +218,7 @@ class StarposPaymentServiceTest {
             StarposQrOrderRS response = pay(service(server, Duration.ofSeconds(5)),
                     payOrder("ORDER-BAD-LINK", 100L, "标题", "描述"));
 
-            assertEquals(ChannelRetMsg.ChannelState.CONFIRM_FAIL,
+            assertEquals(ChannelRetMsg.ChannelState.UNKNOWN,
                     response.getChannelRetMsg().getChannelState());
             assertFalse(response.getChannelRetMsg().getChannelErrMsg().isBlank());
             assertEquals("", response.buildPayData());
@@ -212,7 +237,7 @@ class StarposPaymentServiceTest {
             StarposQrOrderRS response = pay(service(server, Duration.ofSeconds(5)),
                     payOrder("ORDER-PORT", 100L, "标题", "描述"));
 
-            assertEquals(ChannelRetMsg.ChannelState.CONFIRM_FAIL,
+            assertEquals(ChannelRetMsg.ChannelState.UNKNOWN,
                     response.getChannelRetMsg().getChannelState());
             assertEquals("", response.buildPayData());
         }

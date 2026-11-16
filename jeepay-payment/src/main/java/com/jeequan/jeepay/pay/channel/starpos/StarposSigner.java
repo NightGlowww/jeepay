@@ -17,9 +17,8 @@ import javax.crypto.Cipher;
 /**
  * 星驿付签名边界。
  *
- * <p>canonical JSON 和 SHA-256 规则由当前项目契约锁定。RSA 部分集中在
- * {@link RsaCodec} 内，正式星驿付资料接入时只需替换该边界及测试 fixture，
- * 不影响调用方的签名内容构造。</p>
+ * <p>依据星驿支付安全规范的参数串、SHA-256 与 RSA 公钥加解密规则。
+ * https://xingyifu.apifox.cn/7306848m0</p>
  */
 public final class StarposSigner {
 
@@ -30,7 +29,7 @@ public final class StarposSigner {
     }
 
     /**
-     * 生成签名用 canonical JSON。
+     * 生成签名参数串。方法名保留给当前渠道调用方，结果不是 JSON。
      *
      * <ul>
      *     <li>顶层 key 按 ASCII 大小写敏感顺序排序；</li>
@@ -49,7 +48,15 @@ public final class StarposSigner {
                 sortedFields.put(key, value);
             }
         });
-        return JSON.toJSONString(sortedFields);
+        StringBuilder canonical = new StringBuilder();
+        sortedFields.forEach((key, value) -> {
+            if (canonical.length() > 0) {
+                canonical.append('&');
+            }
+            canonical.append(key).append('=');
+            canonical.append(value instanceof String ? value : JSON.toJSONString(value));
+        });
+        return canonical.toString();
     }
 
     /**

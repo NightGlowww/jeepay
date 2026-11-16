@@ -57,7 +57,7 @@ class StarposSignerTest {
     void canonicalJson_excludes_null_and_sign_but_keeps_empty_string() {
         JSONObject vector = vectorByName("null-is-excluded-empty-and-sign-are-handled");
         assertEquals(
-                "{\"empty\":\"\",\"present\":\"value\"}",
+                "empty=&present=value",
                 StarposSigner.canonicalJson(fieldsOf(vector))
         );
     }
@@ -66,7 +66,7 @@ class StarposSignerTest {
     void canonicalJson_keeps_nested_object_input_order() {
         JSONObject vector = vectorByName("nested-object-keeps-input-order");
         assertEquals(
-                "{\"alpha\":\"first\",\"outer\":{\"z\":1,\"a\":2}}",
+                "alpha=first&outer={\"z\":1,\"a\":2}",
                 StarposSigner.canonicalJson(fieldsOf(vector))
         );
     }

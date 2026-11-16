@@ -101,7 +101,7 @@ public class StarposChannelNoticeService extends AbstractChannelNoticeService {
                 throw ResponseException.buildText("ERROR");
             }
 
-            validateOrderAndAmount(jsonParams, payOrder);
+            validateOrderAndAmount(jsonParams, payOrder, starposParams);
 
             String orderNo = firstNonBlank(
                     jsonParams, "ORDER_NO", "orderNo", "order_no"
@@ -175,9 +175,17 @@ public class StarposChannelNoticeService extends AbstractChannelNoticeService {
         );
     }
 
-    private void validateOrderAndAmount(JSONObject params, PayOrder payOrder) {
+    private void validateOrderAndAmount(JSONObject params, PayOrder payOrder,
+                                        StarposNormalMchParams starposParams) {
         if (payOrder == null
                 || !CS.IF_CODE.STARPOS.equals(payOrder.getIfCode())) {
+            throw ResponseException.buildText("ERROR");
+        }
+
+        // 机构公钥可能由多个商户共用，签名和三方订单号仍须与配置的收款商户一致。
+        if (StringUtils.isBlank(starposParams.getAgetId()) || StringUtils.isBlank(starposParams.getCustId())
+                || !StringUtils.equals(starposParams.getAgetId(), firstNonBlank(params, "AGET_ID", "agetId"))
+                || !StringUtils.equals(starposParams.getCustId(), firstNonBlank(params, "CUST_ID", "custId"))) {
             throw ResponseException.buildText("ERROR");
         }
 

@@ -137,6 +137,18 @@ class StarposChannelNoticeServiceTest {
         );
     }
 
+    @Test
+    void shouldRejectCorrectlySignedNoticeForAnotherAgentOrMerchant() {
+        PayOrder order = payOrder("PAY-IDENTITY", 100L, PayOrder.STATE_ING);
+        for (String field : new String[]{"AGET_ID", "CUST_ID"}) {
+            JSONObject params = signedNotice("CHANNEL-IDENTITY", "PAY-IDENTITY", "T-IDENTITY", "1", "100");
+            params.put(field, "OTHER");
+            params.put("sign", signWithPrivateKey(unsignedFields(params)));
+            assertThrows(ResponseException.class,
+                    () -> service(params, order).doNotice(null, params, order, context(), noticeType()));
+        }
+    }
+
     private static TestableNoticeService service(
             JSONObject params,
             PayOrder payOrder
@@ -154,6 +166,8 @@ class StarposChannelNoticeServiceTest {
             String txamt
     ) {
         JSONObject params = new JSONObject(new LinkedHashMap<>());
+        params.put("AGET_ID", "AGENT-1001");
+        params.put("CUST_ID", "CUST-1001");
         params.put("ORDER_NO", orderNo);
         params.put("THREE_ORDER_NO", threeOrderNo);
         params.put("T_ORDER_NO", tOrderNo);

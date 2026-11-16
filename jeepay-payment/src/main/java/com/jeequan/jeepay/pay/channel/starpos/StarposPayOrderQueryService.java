@@ -21,7 +21,7 @@ import java.util.TimeZone;
 /**
  * 星驿付支付订单查询服务。
  *
- * <p>查询结果必须先通过星驿付公钥验签，再参与本地订单状态推进。对无法确认
+ * <p>查询响应经固定 HTTPS 通道获取；官方 schema 不要求 sign，若返回则必须验签。对无法确认
  * 的结果统一保留本地进行中状态，交由后续查单继续收敛。</p>
  */
 @Slf4j
@@ -61,7 +61,7 @@ public class StarposPayOrderQueryService implements IPayOrderQueryService {
         } catch (RuntimeException e) {
             log.warn("星驿付查单配置或签名构造失败，orderNo={}",
                     maskOrderNo(payOrder.getPayOrderId()), e);
-            return confirmedFailure(QUERY_ERROR_CODE, "星驿付查单配置无效", null);
+            return unknownResult(QUERY_ERROR_CODE, "星驿付查单配置无效", null);
         }
 
         try {
@@ -106,7 +106,7 @@ public class StarposPayOrderQueryService implements IPayOrderQueryService {
         fields.put("agetId", params.getAgetId());
         fields.put("custId", params.getCustId());
         fields.put("version", params.getVersion());
-        fields.put("timeStamp", String.valueOf(System.currentTimeMillis()));
+        fields.put("timeStamp", StarposConfig.requestTimestamp());
         fields.put("orderNo", payOrder.getPayOrderId());
         fields.put("orderTime", orderDate(payOrder.getCreatedAt()));
         fields.put("sign", StarposSigner.signRequest(fields, params.getPublicKey()));
@@ -135,7 +135,8 @@ public class StarposPayOrderQueryService implements IPayOrderQueryService {
 
         boolean topLevelVerified = verify(response, params);
         boolean nestedVerified = data != null && verify(data, params);
-        if (!topLevelVerified && !nestedVerified) {
+        boolean signaturePresent = response.containsKey("sign") || (data != null && data.containsKey("sign"));
+        if (signaturePresent && !topLevelVerified && !nestedVerified) {
             return unknownResult(envelopeCode, "星驿付查单响应验签失败",
                     response.toJSONString());
         }
@@ -168,10 +169,18 @@ public class StarposPayOrderQueryService implements IPayOrderQueryService {
         if (WAITING_CODE.equals(code) || "2".equals(status)) {
             return waitingResult(code, businessMessage, origin);
         }
-        if ("0".equals(status) || "99".equals(status)) {
-            return confirmedFailure(code, businessMessage, origin);
+        // 同一机构的公钥可覆盖多个订单；验签通过仍需绑定本次查询的订单。
+        String threeOrderNo = firstNonBlank(business, "threeOrderNo", "THREE_ORDER_NO");
+        if (!StringUtils.equals(payOrder.getPayOrderId(), threeOrderNo)
+                || !StringUtils.equals(params.getAgetId(), firstNonBlank(business, "agetId", "AGET_ID"))) {
+            return unknownResult(code, "星驿付查单订单关系不匹配", origin);
         }
-        if (SUCCESS_CODE.equals(code) && "1".equals(status)) {
+        if ("0".equals(status) || "99".equals(status)) {
+            return SUCCESS_CODE.equals(code)
+                    ? unknownResult(code, "星驿付查单结果互相矛盾", origin)
+                    : confirmedFailure(code, businessMessage, origin);
+        }
+        if (SUCCESS_CODE.equals(code) && (StringUtils.isBlank(status) || "1".equals(status) || "e".equals(status))) {
             String channelOrderId = firstNonBlank(business, "orderNo");
             if (StringUtils.isBlank(channelOrderId)
                     || !amountMatches(business, payOrder.getAmount())) {

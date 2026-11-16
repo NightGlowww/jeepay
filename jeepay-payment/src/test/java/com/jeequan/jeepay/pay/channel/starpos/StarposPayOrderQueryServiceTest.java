@@ -131,8 +131,9 @@ class StarposPayOrderQueryServiceTest {
         try (StarposTestServer server = StarposTestServer.start()) {
             JSONObject data = new JSONObject();
             data.put("orderNo", "STARPOS-FAILED-1001");
+            data.put("threeOrderNo", "ORDER-FAILED-1001");
             data.put("orderStatus", orderStatus);
-            server.enqueueJson(200, signedDataResponse("000000", "订单失败", data));
+            server.enqueueJson(200, signedDataResponse("010001", "订单失败", data));
 
             ChannelRetMsg result = query(
                     service(server),
@@ -141,9 +142,47 @@ class StarposPayOrderQueryServiceTest {
 
             assertEquals(ChannelRetMsg.ChannelState.CONFIRM_FAIL,
                     result.getChannelState());
-            assertEquals("000000", result.getChannelErrCode());
+            assertEquals("010001", result.getChannelErrCode());
             assertFalse(result.isNeedQuery());
         }
+    }
+
+    @ParameterizedTest
+    @MethodSource("terminalStatuses")
+    void signedResponseForAnotherOrderCannotChangeLocalState(String status) throws Exception {
+        try (StarposTestServer server = StarposTestServer.start()) {
+            JSONObject data = new JSONObject();
+            data.put("orderNo", "STARPOS-OTHER");
+            data.put("threeOrderNo", "ORDER-OTHER");
+            data.put("orderStatus", status);
+            data.put("txamt", "100");
+            server.enqueueJson(200, signedDataResponse("000000", "其他订单", data));
+            ChannelRetMsg result = query(service(server), payOrder("ORDER-LOCAL", 100L));
+            assertEquals(ChannelRetMsg.ChannelState.UNKNOWN, result.getChannelState());
+            assertTrue(result.isNeedQuery());
+        }
+    }
+
+    @Test
+    void shouldAcceptOfficialUnsignedQuerySchemaOverFixedHttpsTransport() throws Exception {
+        try (StarposTestServer server = StarposTestServer.start()) {
+            JSONObject data = new JSONObject();
+            data.put("orderNo", "STARPOS-OFFICIAL");
+            data.put("threeOrderNo", "ORDER-OFFICIAL");
+            data.put("agetId", "AGENT-1001");
+            data.put("txamt", "100");
+            JSONObject response = new JSONObject();
+            response.put("code", "000000");
+            response.put("data", data);
+            server.enqueueJson(200, response.toJSONString());
+            ChannelRetMsg result = query(service(server), payOrder("ORDER-OFFICIAL", 100L));
+            assertEquals(ChannelRetMsg.ChannelState.CONFIRM_SUCCESS, result.getChannelState());
+            assertEquals("STARPOS-OFFICIAL", result.getChannelOrderId());
+        }
+    }
+
+    private static Stream<String> terminalStatuses() {
+        return Stream.of("0", "1", "99");
     }
 
     private static Stream<String> failedStatuses() {
@@ -222,7 +261,7 @@ class StarposPayOrderQueryServiceTest {
     }
 
     @Test
-    void shouldConfirmFailureForInvalidConfiguration() {
+    void shouldKeepOrderQueryableForInvalidConfiguration() {
         MchAppConfigContext context = context();
         StarposNormalMchParams params = context.getNormalMchParamsByIfCode(
                 CS.IF_CODE.STARPOS,
@@ -233,10 +272,10 @@ class StarposPayOrderQueryServiceTest {
         ChannelRetMsg result = new StarposPayOrderQueryService()
                 .query(payOrder("ORDER-CONFIG-1001", 100L), context);
 
-        assertEquals(ChannelRetMsg.ChannelState.CONFIRM_FAIL,
+        assertEquals(ChannelRetMsg.ChannelState.UNKNOWN,
                 result.getChannelState());
         assertEquals("STARPOS_QUERY_ERROR", result.getChannelErrCode());
-        assertFalse(result.isNeedQuery());
+        assertTrue(result.isNeedQuery());
     }
 
     @Test
@@ -362,6 +401,7 @@ class StarposPayOrderQueryServiceTest {
             String message,
             JSONObject data
     ) {
+        data.putIfAbsent("agetId", "AGENT-1001");
         data.put("code", code);
         data.put("message", message);
         data.put("sign", privateEncryptHash(withoutSign(data), KEY_PAIR.getPrivate()));
