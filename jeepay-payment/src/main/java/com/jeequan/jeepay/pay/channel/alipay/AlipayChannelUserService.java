@@ -17,6 +17,7 @@ package com.jeequan.jeepay.pay.channel.alipay;
 
 import com.alibaba.fastjson.JSONObject;
 import com.alipay.api.request.AlipaySystemOauthTokenRequest;
+import com.alipay.api.response.AlipaySystemOauthTokenResponse;
 import com.jeequan.jeepay.core.constants.CS;
 import com.jeequan.jeepay.core.exception.BizException;
 import com.jeequan.jeepay.core.model.params.alipay.AlipayConfig;
@@ -84,14 +85,27 @@ public class AlipayChannelUserService implements IChannelUserService {
 
         String authCode = reqParams.getString("auth_code");
 
-        //通过code 换取openId
+        if (AlipayUserIdType.isMissing(authCode)) {
+            throw new BizException("支付宝 auth_code 不能为空");
+        }
+        AlipayUserIdType userIdType = AlipayUserIdType.resolve(configContextQueryService, mchAppConfigContext);
+
+        // 使用与下单相同的应用身份空间，避免把 open_id 当作 user_id。
         AlipaySystemOauthTokenRequest request = new AlipaySystemOauthTokenRequest();
         request.setCode(authCode); request.setGrantType("authorization_code");
         try {
-            return configContextQueryService.getAlipayClientWrapper(mchAppConfigContext).execute(request).getUserId();
+            AlipaySystemOauthTokenResponse result = configContextQueryService.getAlipayClientWrapper(mchAppConfigContext).execute(request);
+            if (result == null || !result.isSuccess()) {
+                throw new BizException("获取支付宝用户信息失败，请检查授权码和应用配置");
+            }
+            String userId = userIdType == AlipayUserIdType.OPEN_ID ? result.getOpenId() : result.getUserId();
+            if (AlipayUserIdType.isMissing(userId)) {
+                throw new BizException("支付宝未返回 " + userIdType.name() + "，请核对应用的 userIdType 配置");
+            }
+            return userId;
         } catch (ChannelException e) {
-            e.printStackTrace();
-            return null;
+            log.error("获取支付宝用户信息失败", e);
+            throw new BizException("获取支付宝用户信息失败，请重试授权");
         }
     }
 

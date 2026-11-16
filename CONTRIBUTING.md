@@ -126,8 +126,8 @@ mvn -B -DskipTests -T 1C test-compile
 mvn -B test
 ```
 
-- `mvn -B test` 执行当前检出分支已有的单元回归。当前 `master` 包含 FastJson 兼容和消息队列配置测试；`dev` 还包含商户授权回归。治理文件同步不代表授权修复及其测试已发布到 `master`。业务修复应补充相关测试，不要用跳过测试代替通过。
-- 在包含商户授权测试的 `dev` 分支，仅快速验证授权时可运行 `mvn -B -pl jeepay-merchant -am -Dtest='*AuthorizationTest' -Dsurefire.failIfNoSpecifiedTests=false test`，它不能替代完整检查。
+- `mvn -B test` 包含商户授权、FastJson 兼容和消息队列配置等现有单元回归；业务修复应补充相关测试，不要用跳过测试代替通过。
+- 仅快速验证商户授权时可运行 `mvn -B -pl jeepay-merchant -am -Dtest='*AuthorizationTest' -Dsurefire.failIfNoSpecifiedTests=false test`，它不能替代完整检查。
 - 部署或跨仓库接口变更需在隔离测试环境验证安装 / 升级、登录授权、相关下单 / 回调流程，并记录配套前端版本。真实渠道支付需要单独的测试环境与授权；离线单元测试不代表已经通过实付、退款或对账验收。
 - CI（`.github/workflows/ci.yml`）在目标为 `dev` / `master` 的 PR 及这两个分支的 push 上运行；保留检查名称 `Shell 安装脚本断言`、`Maven 编译`，后者同时执行测试。
 - 在 PR 中列出具体命令、结果以及未运行项和原因；不要提交真实商户信息、密钥、支付凭据或生产日志。

@@ -106,6 +106,11 @@ public class MchPayInterfaceConfigController extends CommonCtrl {
     @PreAuthorize("hasAuthority('ENT_MCH_PAY_CONFIG_VIEW')")
     @GetMapping("/{appId}/{ifCode}")
     public ApiRes<PayInterfaceConfig> getByMchNo(@PathVariable(value = "appId") String appId, @PathVariable(value = "ifCode") String ifCode) {
+        MchApp mchApp = mchAppService.getById(appId);
+        if (mchApp == null || !getCurrentMchNo().equals(mchApp.getMchNo())) {
+            throw new BizException("商户应用不存在或不可用");
+        }
+
         PayInterfaceConfig payInterfaceConfig = payInterfaceConfigService.getByInfoIdAndIfCode(CS.INFO_TYPE_MCH_APP, appId, ifCode);
         if (payInterfaceConfig != null) {
             // 费率转换为百分比数值
@@ -148,7 +153,14 @@ public class MchPayInterfaceConfigController extends CommonCtrl {
         String ifCode = getValStringRequired("ifCode");
         String infoId = getValStringRequired("infoId");
 
+        MchApp mchApp = mchAppService.getById(infoId);
+        if (mchApp == null || !getCurrentMchNo().equals(mchApp.getMchNo())) {
+            throw new BizException("商户应用不存在或不可用");
+        }
+
         PayInterfaceConfig payInterfaceConfig = getObject(PayInterfaceConfig.class);
+        // 主键只能来自下方已校验应用的自然键查询，创建时不能接收客户端主键。
+        payInterfaceConfig.setId(null);
         payInterfaceConfig.setInfoType(CS.INFO_TYPE_MCH_APP);
         payInterfaceConfig.setInfoId(infoId);
 

@@ -42,5 +42,5 @@ jobs:
         run: mvn -B -DskipTests -T 1C clean compile
       - name: Compile tests
         run: mvn -B -DskipTests -T 1C test-compile
-      - name: Run available unit regression tests
+      - name: Run unit and authorization regression tests
         run: mvn -B test

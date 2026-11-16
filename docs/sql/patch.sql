@@ -308,3 +308,43 @@ ALTER TABLE `t_pay_order`
 
 ALTER TABLE `t_refund_order`
     MODIFY COLUMN `ext_param` varchar(2048) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT NULL COMMENT '商户扩展参数' AFTER `notify_url`;
+
+
+## -- ++++ [20260726] ===> STARPOS
+
+-- 星驿付聚合收银台支付方式
+INSERT INTO t_pay_way (way_code, way_name, created_at, updated_at)
+SELECT 'STARPOS_QR', '星驿付聚合收银台',
+       '2026-07-26 00:00:00.000',
+       '2026-07-26 00:00:00.000'
+WHERE NOT EXISTS (
+        SELECT 1 FROM t_pay_way WHERE way_code = 'STARPOS_QR'
+)
+ON DUPLICATE KEY UPDATE way_code = VALUES(way_code);
+
+-- 星驿付普通商户通道
+INSERT INTO t_pay_interface_define (
+        if_code, if_name, is_mch_mode, is_isv_mode, config_page_type,
+        isv_params, isvsub_mch_params, normal_mch_params, way_codes,
+        icon, bg_color, state, remark, created_at, updated_at
+)
+SELECT
+        'starpos',
+        '星驿付',
+        1,
+        0,
+        1,
+        NULL,
+        NULL,
+        '[{"name":"environment","desc":"环境配置","type":"radio","verify":"required","values":"test,uat,prod","titles":"测试环境,UAT环境,生产环境"},{"name":"agetId","desc":"代理商编号","type":"text","verify":"required"},{"name":"custId","desc":"商户编号","type":"text","verify":"required"},{"name":"publicKey","desc":"星驿付公钥","type":"textarea","verify":"required","star":"1"},{"name":"version","desc":"接口版本","type":"text","verify":"required"}]',
+        '[{"wayCode":"STARPOS_QR"}]',
+        NULL,
+        '#3B82F6',
+        1,
+        '星驿付官方通道',
+        '2026-07-26 00:00:00.000',
+        '2026-07-26 00:00:00.000'
+WHERE NOT EXISTS (
+        SELECT 1 FROM t_pay_interface_define WHERE if_code = 'starpos'
+)
+ON DUPLICATE KEY UPDATE if_code = VALUES(if_code);

@@ -15,7 +15,6 @@
  */
 package com.jeequan.jeepay.pay.channel.xxpay;
 
-import cn.hutool.http.HttpUtil;
 import com.alibaba.fastjson.JSONObject;
 import com.jeequan.jeepay.core.constants.CS;
 import com.jeequan.jeepay.core.entity.PayOrder;
@@ -26,9 +25,11 @@ import com.jeequan.jeepay.pay.channel.AbstractRefundService;
 import com.jeequan.jeepay.pay.model.MchAppConfigContext;
 import com.jeequan.jeepay.pay.rqrs.msg.ChannelRetMsg;
 import com.jeequan.jeepay.pay.rqrs.refund.RefundOrderRQ;
+import com.jeequan.jeepay.pay.util.OutboundHttpClient;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.annotation.Autowired;
 
 import java.util.Map;
 import java.util.TreeMap;
@@ -43,6 +44,8 @@ import java.util.TreeMap;
 @Service
 @Slf4j
 public class XxpayRefundService extends AbstractRefundService {
+
+    @Autowired private OutboundHttpClient outboundHttpClient;
 
     @Override
     public String getIfCode() {
@@ -80,7 +83,7 @@ public class XxpayRefundService extends AbstractRefundService {
         String resStr = "";
         try {
             log.info("发起退款[{}]参数：{}", getIfCode(), refundUrl);
-            resStr = HttpUtil.createPost(refundUrl).timeout(60 * 1000).execute().body();
+            resStr = outboundHttpClient.postXxpay(refundUrl);
             log.info("发起退款[{}]结果：{}", getIfCode(), resStr);
         } catch (Exception e) {
             log.error("http error", e);
@@ -145,7 +148,7 @@ public class XxpayRefundService extends AbstractRefundService {
         String resStr = "";
         try {
             log.info("查询退款[{}]参数：{}", getIfCode(), queryRefundOrderUrl);
-            resStr = HttpUtil.createPost(queryRefundOrderUrl).timeout(60 * 1000).execute().body();
+            resStr = outboundHttpClient.postXxpay(queryRefundOrderUrl);
             log.info("查询退款[{}]结果：{}", getIfCode(), resStr);
         } catch (Exception e) {
             log.error("http error", e);

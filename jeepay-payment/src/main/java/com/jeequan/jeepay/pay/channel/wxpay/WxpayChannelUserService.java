@@ -26,6 +26,7 @@ import com.jeequan.jeepay.pay.model.WxServiceWrapper;
 import com.jeequan.jeepay.pay.service.ConfigContextQueryService;
 import lombok.extern.slf4j.Slf4j;
 import me.chanjar.weixin.common.error.WxErrorException;
+import me.chanjar.weixin.common.bean.oauth2.WxOAuth2AccessToken;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -84,13 +85,20 @@ public class WxpayChannelUserService implements IChannelUserService {
     @Override
     public String getChannelUserId(JSONObject reqParams, MchAppConfigContext mchAppConfigContext) {
         String code = reqParams.getString("code");
+        if (StringUtils.isBlank(code) || "undefined".equalsIgnoreCase(code) || "null".equalsIgnoreCase(code)) {
+            throw new BizException("微信授权 code 不能为空");
+        }
         try {
 
             WxServiceWrapper wxServiceWrapper = configContextQueryService.getWxServiceWrapper(mchAppConfigContext);
-            return wxServiceWrapper.getWxMpService().getOAuth2Service().getAccessToken(code).getOpenId();
+            WxOAuth2AccessToken result = wxServiceWrapper.getWxMpService().getOAuth2Service().getAccessToken(code);
+            if (result == null || StringUtils.isBlank(result.getOpenId())) {
+                throw new BizException("微信未返回 openid，请检查授权公众号配置");
+            }
+            return result.getOpenId();
         } catch (WxErrorException e) {
-            e.printStackTrace();
-            return null;
+            log.error("获取微信用户信息失败", e);
+            throw new BizException("获取微信用户信息失败，请重试授权");
         }
     }
 

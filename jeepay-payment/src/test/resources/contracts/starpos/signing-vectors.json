@@ -1,0 +1,52 @@
+{
+  "schemaVersion": 1,
+  "canonicalJsonVectors": [
+    {
+      "name": "ascii-key-order-is-case-sensitive",
+      "fields": {
+        "z": "last",
+        "a": "lower",
+        "A": "upper",
+        "10": "numeric-key"
+      },
+      "canonicalJson": "10=numeric-key&A=upper&a=lower&z=last",
+      "sha256Hex": "ffa192778e3daf2ac005897b4899a3d7e62e076d2a795647b15fe41f80315bc7"
+    },
+    {
+      "name": "null-is-excluded-empty-and-sign-are-handled",
+      "fields": {
+        "sign": "ignored-signature",
+        "nullable": null,
+        "present": "value",
+        "empty": ""
+      },
+      "canonicalJson": "empty=&present=value",
+      "sha256Hex": "b3696acea833c857eefcde730aa72e17b69523c6537323843349b40224faf787"
+    },
+    {
+      "name": "nested-object-keeps-input-order",
+      "fields": {
+        "alpha": "first",
+        "outer": {
+          "z": 1,
+          "a": 2
+        }
+      },
+      "canonicalJson": "alpha=first&outer={\"z\":1,\"a\":2}",
+      "sha256Hex": "73f41693dc751ea084b5536cb29aedf5605c1887d70307066cfd6aa6f4a14655"
+    }
+  ],
+  "rsa": {
+    "status": "protocol_locked",
+    "algorithm": "RSA/ECB/PKCS1Padding",
+    "hash": "SHA-256 lowercase hex over UTF-8 canonical parameter string",
+    "keyFormat": "X.509 PUBLIC KEY PEM/Base64",
+    "direction": {
+      "request": "public-key encrypt",
+      "notification": "public-key decrypt"
+    },
+    "source": "XyfClient.php: openssl_public_encrypt/openssl_public_decrypt; postar.cn/xyf/doc/7306848m0",
+    "testMaterial": "Generated local RSA public key; direction/implementation test, not a merchant key sample"
+  },
+  "canonicalSource": "https://xingyifu.apifox.cn/7306848m0#4、签名算法"
+}
