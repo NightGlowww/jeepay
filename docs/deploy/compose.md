@@ -23,7 +23,11 @@ docker compose up -d                   # 后续：跳过编译
 docker compose restart payment         # 重启某个服务
 ```
 
-**默认镜像**指向华为云 SWR 公开仓库（与 Shell 部署一致），国内零配置直达。
+后端 Dockerfile 位于 `jeepay-payment/`、`jeepay-manager/`、`jeepay-merchant/`，直接复制各模块 `target/` 中的 JAR。旧文档中的 `docker build -f docs/Dockerfile` 与 `jeepay-deps` 依赖镜像已不适用；无需创建同名空文件。
+
+第三方基础镜像默认指向华为云 SWR 公开仓库（与 Shell 部署一致），三个后端和 UI 在这里从源码构建。服务器仍需能够访问实际使用的 Maven/npm/镜像仓库，默认地址不保证所有地区都可达。
+
+首次建库只执行完整的 `docs/sql/init.sql`。`docs/sql/patch.sql` 是旧版本升级历史，其中包含当前完整结构已经存在的列，不能在新库初始化后全量重放。数据库已有数据时，备份后按实际版本选择升级步骤，不要重放带 `DROP TABLE` 的 `init.sql`。
 
 ## 暴露端口
 
@@ -56,8 +60,11 @@ docker compose down -v                 # 连同卷一起删
 - 容器内 MySQL / Redis 主机名 = `mysql` / `redis`（compose 已配 network alias）。
 - 改 `conf/*.yml` 后 `docker compose restart <service>` 即可。
 - 要回到 ActiveMQ / RabbitMQ，需同时改 `docker-compose.yml` 和 `conf/*.yml`。
+- 默认端口和账号面向本地测试。服务器面板部署需先调整数据库账号、密码与暴露端口，见 [1Panel 通用编排说明](./1panel.md)。
+- 登录后把系统应用配置中的 `paySiteUrl` 设置为真实公网支付根地址（不带结尾 `/`）；默认 `127.0.0.1:9216` 在商户容器中指向自身，不能访问 payment，也不能供渠道回调。
 
 ---
 
 - 出问题排查：[troubleshooting.md](./troubleshooting.md)
 - 推镜像到 Docker Hub / 华为云 SWR（维护者流程）：[publish.md](./publish.md)
+- 微信、支付宝与 PayPal 配置：[payment-channels.md](../integrate/payment-channels.md)
