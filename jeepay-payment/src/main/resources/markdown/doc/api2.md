@@ -130,7 +130,9 @@ YSF_JSAPI | 云闪付jsapi
 {"auth_code": "13920933111042"}
 ```
 
-当 `wayCode=ALI_JSAPI` 时，channelExtra必须传buyerUserId，为支付宝用户ID，channelExtra示例数据如：
+当 `wayCode=ALI_JSAPI` 时，channelExtra 必须传 `buyerUserId`。其身份类型由当前支付宝应用支付配置的 `userIdType` 明确指定：缺省或 `USER_ID` 表示支付宝 `user_id`，`OPEN_ID` 表示该应用下的 `open_id`。授权取号和下单使用同一配置；不会根据 ID 前缀推断类型。服务商模式以服务商支付宝应用配置为准。开放账号体系的新应用需设置 `userIdType=OPEN_ID`。商户参数与服务商参数定义需包含该可选配置项。
+
+`buyerUserId`、授权取号接口与收银台的字符串协议保持兼容；`OPEN_ID` 模式下该字段装载原始 `open_id`，下单映射为支付宝 `buyer_open_id`。配置默认 `USER_ID`，原有应用不需要修改。channelExtra 示例数据如：
 ```json
 {"buyerUserId": "2088702585070844"}
 ```
@@ -437,7 +439,7 @@ YSF_JSAPI | 云闪付jsapi
 
 字段名 | 变量名 | 必填 | 类型 | 示例值 | 描述
 ------- | -------| -------| -------| -------| -------
-渠道用户ID | channelUserId | 是 | String | o6BcIwvSiRpfS8e_UyfQNrYuk2LI | 渠道用户ID，微信openId或支付宝userId
+渠道用户ID | channelUserId | 是 | String | o6BcIwvSiRpfS8e_UyfQNrYuk2LI | 渠道用户ID，微信 openId；支付宝由应用 userIdType 配置选择 user_id 或 open_id
 
 `完整跳转URL示例`
 
