@@ -110,16 +110,16 @@ public class RequestKitBean {
             if(null == valueObj){
                 value = "";
             }else if(valueObj instanceof String[]){
-                String[] values = (String[])valueObj;
-                for(int i=0;i<values.length;i++){
-                    value = values[i] + ",";
-                }
-                value = value.substring(0, value.length()-1);
+                // 保留重复标量参数取末值的既有行为；列表仍由调用方传入单个逗号分隔字符串。
+                // 空数组必须显式置空，不能沿用上一个参数的值或执行越界截取。
+                String[] values = (String[]) valueObj;
+                value = values.length == 0 ? "" : String.valueOf(values[values.length - 1]);
             }else{
                 value = valueObj.toString();
             }
 
-            if(!name.contains("[")){
+            if(!name.contains("[") || name.indexOf("]") < name.indexOf("[")){
+                // 缺少 "]"，或 "]" 位于 "[" 之前时不是对象属性语法，按普通键处理。
                 returnObject.put(name, value);
                 continue;
             }
