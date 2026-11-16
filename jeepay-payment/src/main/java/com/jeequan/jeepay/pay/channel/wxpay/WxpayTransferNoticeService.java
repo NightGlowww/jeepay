@@ -18,12 +18,7 @@ package com.jeequan.jeepay.pay.channel.wxpay;
 import com.alibaba.fastjson.JSONObject;
 import com.github.binarywang.wxpay.bean.notify.SignatureHeader;
 import com.github.binarywang.wxpay.bean.transfer.TransferBillsNotifyResult;
-import com.github.binarywang.wxpay.config.WxPayConfig;
 import com.github.binarywang.wxpay.service.WxPayService;
-import com.github.binarywang.wxpay.v3.auth.AutoUpdateCertificatesVerifier;
-import com.github.binarywang.wxpay.v3.auth.PrivateKeySigner;
-import com.github.binarywang.wxpay.v3.auth.WxPayCredentials;
-import com.github.binarywang.wxpay.v3.util.PemUtils;
 import com.jeequan.jeepay.core.constants.CS;
 import com.jeequan.jeepay.core.entity.TransferOrder;
 import com.jeequan.jeepay.core.exception.BizException;
@@ -34,15 +29,12 @@ import com.jeequan.jeepay.pay.rqrs.msg.ChannelRetMsg;
 import com.jeequan.jeepay.service.impl.TransferOrderService;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.tuple.MutablePair;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 
-import java.io.FileInputStream;
 import java.math.BigDecimal;
-import java.security.PrivateKey;
 
 /*
 * 微信 转账回调接口实现类
@@ -148,21 +140,7 @@ public class WxpayTransferNoticeService extends AbstractTransferNoticeService {
         log.info("\n【请求头信息】：{}\n【加密数据】：{}", header.toString(), params);
 
         WxPayService wxPayService = configContextQueryService.getWxServiceWrapper(mchAppConfigContext).getWxPayService();
-        WxPayConfig wxPayConfig = wxPayService.getConfig();
-
-        if(StringUtils.isEmpty(wxPayConfig.getPublicKeyId())){ // 如果存在wxPublicKeyId, 那么无需自动换取平台证书
-            // 自动获取微信平台证书
-            FileInputStream fis = new FileInputStream(wxPayConfig.getPrivateKeyPath());
-            PrivateKey privateKey = PemUtils.loadPrivateKey(fis);
-            fis.close();
-
-            AutoUpdateCertificatesVerifier verifier = new AutoUpdateCertificatesVerifier(
-                    new WxPayCredentials(wxPayConfig.getMchId(), new PrivateKeySigner(wxPayConfig.getCertSerialNo(), privateKey)),
-                    wxPayConfig.getApiV3Key().getBytes("utf-8"), "https://api.mch.weixin.qq.com");
-            wxPayConfig.setVerifier(verifier);
-        }
-
-        wxPayService.setConfig(wxPayConfig);
+        // SDK 按配置复用平台证书或微信支付公钥验签器；每次解析仍会校验通知签名。
 
         TransferBillsNotifyResult result = wxPayService.parseTransferBillsNotifyV3Result(params, header);
         return result.getResult();

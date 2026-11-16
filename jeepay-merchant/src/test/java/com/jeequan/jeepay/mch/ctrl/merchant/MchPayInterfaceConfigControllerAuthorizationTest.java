@@ -1,6 +1,8 @@
 package com.jeequan.jeepay.mch.ctrl.merchant;
 
 import com.alibaba.fastjson.JSONObject;
+import com.jeequan.jeepay.components.mq.model.ResetIsvMchAppInfoConfigMQ;
+import com.jeequan.jeepay.components.mq.vender.IMQSender;
 import com.jeequan.jeepay.core.constants.ApiCodeEnum;
 import com.jeequan.jeepay.core.constants.CS;
 import com.jeequan.jeepay.core.entity.MchInfo;
@@ -14,6 +16,7 @@ import com.jeequan.jeepay.service.impl.PayInterfaceConfigService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 
@@ -32,6 +35,8 @@ class MchPayInterfaceConfigControllerAuthorizationTest extends MerchantControlle
     private MchInfoService mchInfoService;
     @Mock
     private PayInterfaceConfigService payInterfaceConfigService;
+    @Mock
+    private IMQSender mqSender;
     @InjectMocks
     private MchPayInterfaceConfigController controller;
 
@@ -112,6 +117,85 @@ class MchPayInterfaceConfigControllerAuthorizationTest extends MerchantControlle
         assertEquals(0, BigDecimal.ONE.compareTo(response.getData().getIfRate()));
         assertEquals(params, response.getData().getIfParams());
         verifyConfigurationReadAfterOwnership();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {FOREIGN_APP_ID, MISSING_APP_ID})
+    void rejectsForeignOrMissingApplicationBeforeSavingConfiguration(String appId) {
+        configurationRequest(appId, 999L);
+        if (FOREIGN_APP_ID.equals(appId)) {
+            lenient().when(mchAppService.getById(appId)).thenReturn(application(appId, FOREIGN_MCH_NO));
+        }
+
+        assertThrows(BizException.class, controller::saveOrUpdate);
+
+        verifyNoInteractions(payInterfaceConfigService, mchInfoService, mqSender);
+    }
+
+    @Test
+    void createsOwnConfigurationWithoutUsingClientPrimaryKey() {
+        ownApplication();
+        configurationRequest(OWN_APP_ID, 999L);
+        when(payInterfaceConfigService.saveOrUpdate(any(PayInterfaceConfig.class))).thenReturn(true);
+
+        assertEquals(ApiCodeEnum.SUCCESS.getCode(), controller.saveOrUpdate().getCode());
+
+        PayInterfaceConfig saved = capturedSavedConfiguration();
+        assertNull(saved.getId());
+        assertEquals(OWN_APP_ID, saved.getInfoId());
+        assertEquals(CS.INFO_TYPE_MCH_APP, saved.getInfoType());
+        assertEquals(IF_CODE, saved.getIfCode());
+        assertEquals(0, new BigDecimal("0.006").compareTo(saved.getIfRate()));
+        assertEquals(CURRENT_USER_ID, saved.getCreatedUid());
+        verifyConfigurationSaveAndMessageOrder();
+    }
+
+    @Test
+    void updatesOwnConfigurationByDatabaseKeyAndPreservesParameterMerge() {
+        ownApplication();
+        configurationRequest(OWN_APP_ID, 999L);
+        PayInterfaceConfig stored = config(new BigDecimal("0.01"), "{\"kept\":\"existing\",\"changed\":\"old\"}");
+        stored.setId(51L);
+        when(payInterfaceConfigService.getByInfoIdAndIfCode(CS.INFO_TYPE_MCH_APP, OWN_APP_ID, IF_CODE)).thenReturn(stored);
+        when(payInterfaceConfigService.saveOrUpdate(any(PayInterfaceConfig.class))).thenReturn(true);
+
+        assertEquals(ApiCodeEnum.SUCCESS.getCode(), controller.saveOrUpdate().getCode());
+
+        PayInterfaceConfig saved = capturedSavedConfiguration();
+        assertEquals(51L, saved.getId());
+        assertEquals(CURRENT_USER_ID, saved.getUpdatedUid());
+        JSONObject params = JSONObject.parseObject(saved.getIfParams());
+        assertEquals("existing", params.getString("kept"));
+        assertEquals("new", params.getString("changed"));
+        verifyConfigurationSaveAndMessageOrder();
+    }
+
+    private void configurationRequest(String appId, Long id) {
+        JSONObject body = new JSONObject();
+        body.put("infoId", appId);
+        body.put("ifCode", IF_CODE);
+        body.put("id", id);
+        body.put("infoType", CS.INFO_TYPE_ISV);
+        body.put("ifRate", new BigDecimal("0.6"));
+        body.put("ifParams", "{\"changed\":\"new\"}");
+        when(requestKitBean.getReqParamJSON()).thenReturn(body);
+    }
+
+    private PayInterfaceConfig capturedSavedConfiguration() {
+        ArgumentCaptor<PayInterfaceConfig> saved = ArgumentCaptor.forClass(PayInterfaceConfig.class);
+        verify(payInterfaceConfigService).saveOrUpdate(saved.capture());
+        return saved.getValue();
+    }
+
+    private void verifyConfigurationSaveAndMessageOrder() {
+        var ordered = inOrder(mchAppService, payInterfaceConfigService, mqSender);
+        ordered.verify(mchAppService).getById(OWN_APP_ID);
+        ordered.verify(payInterfaceConfigService).getByInfoIdAndIfCode(CS.INFO_TYPE_MCH_APP, OWN_APP_ID, IF_CODE);
+        ordered.verify(payInterfaceConfigService).saveOrUpdate(any(PayInterfaceConfig.class));
+        ArgumentCaptor<ResetIsvMchAppInfoConfigMQ> message = ArgumentCaptor.forClass(ResetIsvMchAppInfoConfigMQ.class);
+        ordered.verify(mqSender).send(message.capture());
+        assertEquals(CURRENT_MCH_NO, message.getValue().getPayload().getMchNo());
+        assertEquals(OWN_APP_ID, message.getValue().getPayload().getAppId());
     }
 
     private void ownApplication() {

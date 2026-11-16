@@ -15,7 +15,6 @@
  */
 package com.jeequan.jeepay.pay.channel.xxpay;
 
-import cn.hutool.http.HttpUtil;
 import com.alibaba.fastjson.JSONObject;
 import com.jeequan.jeepay.core.constants.CS;
 import com.jeequan.jeepay.core.entity.PayOrder;
@@ -27,9 +26,11 @@ import com.jeequan.jeepay.pay.rqrs.AbstractRS;
 import com.jeequan.jeepay.pay.rqrs.msg.ChannelRetMsg;
 import com.jeequan.jeepay.pay.rqrs.payorder.UnifiedOrderRQ;
 import com.jeequan.jeepay.pay.util.PaywayUtil;
+import com.jeequan.jeepay.pay.util.OutboundHttpClient;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.annotation.Autowired;
 
 import java.util.Map;
 
@@ -44,6 +45,8 @@ import java.util.Map;
 @Service
 @Slf4j
 public class XxpayPaymentService extends AbstractPaymentService {
+
+    @Autowired protected OutboundHttpClient outboundHttpClient;
 
     @Override
     public String getIfCode() {
@@ -82,7 +85,7 @@ public class XxpayPaymentService extends AbstractPaymentService {
         String resStr = "";
         try {
             log.info("发起支付[{}]参数：{}", getIfCode(), payUrl);
-            resStr = HttpUtil.createPost(payUrl).timeout(60 * 1000).execute().body();
+            resStr = outboundHttpClient.postXxpay(payUrl);
             log.info("发起支付[{}]结果：{}", getIfCode(), resStr);
         } catch (Exception e) {
             log.error("http error", e);

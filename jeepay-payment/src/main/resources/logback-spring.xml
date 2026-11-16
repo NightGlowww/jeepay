@@ -66,4 +66,6 @@
     <!-- 项目日志级别配置 -->
     <logger name="com.jeequan.jeepay" level="${currentProjectLevel}"/>
 
+    <!-- SDK 的签名 DEBUG 含应用密钥；保留 INFO/WARN/ERROR，不能继承项目 TRACE。 -->
+    <logger name="com.jeequan.jeepay.util.JeepayKit" level="INFO"/>
 </configuration>

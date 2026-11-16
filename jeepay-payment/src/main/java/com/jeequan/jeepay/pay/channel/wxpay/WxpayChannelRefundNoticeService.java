@@ -20,12 +20,7 @@ import com.github.binarywang.wxpay.bean.notify.SignatureHeader;
 import com.github.binarywang.wxpay.bean.notify.WxPayNotifyResponse;
 import com.github.binarywang.wxpay.bean.notify.WxPayRefundNotifyResult;
 import com.github.binarywang.wxpay.bean.notify.WxPayRefundNotifyV3Result;
-import com.github.binarywang.wxpay.config.WxPayConfig;
 import com.github.binarywang.wxpay.service.WxPayService;
-import com.github.binarywang.wxpay.v3.auth.AutoUpdateCertificatesVerifier;
-import com.github.binarywang.wxpay.v3.auth.PrivateKeySigner;
-import com.github.binarywang.wxpay.v3.auth.WxPayCredentials;
-import com.github.binarywang.wxpay.v3.util.PemUtils;
 import com.jeequan.jeepay.core.constants.CS;
 import com.jeequan.jeepay.core.entity.RefundOrder;
 import com.jeequan.jeepay.core.exception.BizException;
@@ -46,9 +41,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 
 import jakarta.servlet.http.HttpServletRequest;
-import java.io.FileInputStream;
 import java.math.BigDecimal;
-import java.security.PrivateKey;
 
 /*
  * 微信支付 退款回调接口实现类
@@ -185,20 +178,7 @@ public class WxpayChannelRefundNoticeService extends AbstractChannelRefundNotice
         log.info("\n【请求头信息】：{}\n【加密数据】：{}", header.toString(), params);
 
         WxPayService wxPayService = configContextQueryService.getWxServiceWrapper(mchAppConfigContext).getWxPayService();
-        WxPayConfig wxPayConfig = wxPayService.getConfig();
-
-        if(StringUtils.isEmpty(wxPayConfig.getPublicKeyId())){ // 如果存在wxPublicKeyId, 那么无需自动换取平台证书
-            // 自动获取微信平台证书
-            FileInputStream fis = new FileInputStream(wxPayConfig.getPrivateKeyPath());
-            PrivateKey privateKey = PemUtils.loadPrivateKey(fis);
-            fis.close();
-            AutoUpdateCertificatesVerifier verifier = new AutoUpdateCertificatesVerifier(
-                    new WxPayCredentials(wxPayConfig.getMchId(), new PrivateKeySigner(wxPayConfig.getCertSerialNo(), privateKey)),
-                    wxPayConfig.getApiV3Key().getBytes("utf-8"), "https://api.mch.weixin.qq.com");
-            wxPayConfig.setVerifier(verifier);
-        }
-
-        wxPayService.setConfig(wxPayConfig);
+        // SDK 按配置复用平台证书或微信支付公钥验签器；每次解析仍会校验通知签名。
 
         WxPayRefundNotifyV3Result result = wxPayService.parseRefundNotifyV3Result(params, header);
 

@@ -11,8 +11,6 @@ IMAGE_NAME=jeepay
 BUILDER=${IMAGE_NAME}-builder
 # 平台
 PLATFORM=linux/amd64,linux/arm64
-# 后端 Maven 依赖缓存
-BACKEND_DEPS_IMAGE_NAME=${DOCKER_NAMESPACE}/${IMAGE_NAME}-deps:$VERSION
 FRONTEND_DEPS_IMAGE_NAME=${DOCKER_NAMESPACE}/${IMAGE_NAME}-ui-deps:$VERSION
 
 UI_FOLDER=./private-jeepay-ui
@@ -46,15 +44,15 @@ docker_buildx() {
 build_backend() {
 
   echo "== 项目后端"
-  if [ "$HAS_DEPS" = "deps" ]; then
-    docker_buildx . deps docs/Dockerfile
-  fi
-
-  docker_buildx . payment Dockerfile PORT=9216 PLATFORM=payment IMAGES="$BACKEND_DEPS_IMAGE_NAME"
-
-  docker_buildx . manager Dockerfile PORT=9217 PLATFORM=manager IMAGES="$BACKEND_DEPS_IMAGE_NAME"
-
-  docker_buildx . merchant Dockerfile PORT=9218 PLATFORM=merchant IMAGES="$BACKEND_DEPS_IMAGE_NAME"
+  # 当前每个模块的 Dockerfile 直接复制已打包 JAR，不再使用 docs/Dockerfile 依赖镜像。
+  # 保留旧的 deps 参数以兼容调用方，但不再构建已删除的依赖层。
+  for service in payment manager merchant; do
+    if [ "$ECHO_NAME" != "name" ] && [ ! -f "jeepay-$service/target/jeepay-$service.jar" ]; then
+      echo "ERROR: 缺少 jeepay-$service/target/jeepay-$service.jar，请先在仓库根目录执行 mvn clean package -DskipTests" >&2
+      exit 1
+    fi
+    docker_buildx "./jeepay-$service" "$service" "./jeepay-$service/Dockerfile"
+  done
 
 }
 
@@ -83,7 +81,7 @@ build_deps() {
   docker_buildx ./docker/activemq activemq ./docker/activemq/Dockerfile
 }
 
-if [ "$TARGET" != "" ]; then
+if [ "$TARGET" != "" ] && [ "$ECHO_NAME" != "name" ]; then
   docker buildx rm ${BUILDER} || true
 
   docker buildx create --use --name ${BUILDER} --platform linux/arm64,linux/amd64
@@ -99,6 +97,6 @@ fi
 
 if [ "$TARGET" = "all" ]; then
   build_deps
-else
+elif [ "$TARGET" != "backend" ] && [ "$TARGET" != "frontend" ]; then
   echo "./build-docker.sh [backend|frontend|all] [deps] [name]"
 fi

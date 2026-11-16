@@ -79,8 +79,8 @@ public class WxpayV3Util {
         return JSON.parseObject(response);
     }
 
-    public static JSONObject refundQueryV3Isv(String refundOrderId, WxPayService wxPayService) throws WxPayException {
-        String url = String.format("%s/v3/refund/domestic/refunds/%s?sub_mchid=%s", PAY_BASE_URL, refundOrderId, wxPayService.getConfig().getSubMchId());
+    public static JSONObject refundQueryV3Isv(String refundOrderId, String subMchId, WxPayService wxPayService) throws WxPayException {
+        String url = String.format("%s/v3/refund/domestic/refunds/%s?sub_mchid=%s", PAY_BASE_URL, refundOrderId, subMchId);
         String response = wxPayService.getV3(url);
         return JSON.parseObject(response);
     }

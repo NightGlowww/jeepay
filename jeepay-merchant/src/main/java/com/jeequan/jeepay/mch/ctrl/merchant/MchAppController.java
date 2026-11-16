@@ -147,9 +147,11 @@ public class MchAppController extends CommonCtrl {
         mchApp.setAppId(appId);
 
         MchApp dbRecord = mchAppService.getById(appId);
-        if (!dbRecord.getMchNo().equals(getCurrentMchNo())) {
+        if (dbRecord == null || !getCurrentMchNo().equals(dbRecord.getMchNo())) {
             throw new BizException("无权操作！");
         }
+        // 商户只能修改应用属性，不能通过请求对象转移应用归属。
+        mchApp.setMchNo(dbRecord.getMchNo());
 
         boolean result = mchAppService.updateById(mchApp);
         if (!result) {
