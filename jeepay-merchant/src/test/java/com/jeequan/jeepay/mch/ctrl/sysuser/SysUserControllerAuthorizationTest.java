@@ -1,12 +1,15 @@
 package com.jeequan.jeepay.mch.ctrl.sysuser;
 
 import com.baomidou.mybatisplus.core.MybatisConfiguration;
+import com.alibaba.fastjson.JSONObject;
 import com.baomidou.mybatisplus.core.conditions.Wrapper;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import com.jeequan.jeepay.core.constants.ApiCodeEnum;
 import com.jeequan.jeepay.core.constants.CS;
 import com.jeequan.jeepay.core.entity.SysUser;
 import com.jeequan.jeepay.core.exception.BizException;
+import com.jeequan.jeepay.core.model.security.JeeUserDetails;
 import com.jeequan.jeepay.mch.ctrl.MerchantControllerTestSupport;
 import com.jeequan.jeepay.mch.service.AuthService;
 import com.jeequan.jeepay.service.impl.SysUserService;
@@ -15,10 +18,13 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 
 import java.util.List;
+import java.util.Set;
+import java.util.HashSet;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
@@ -108,4 +114,55 @@ class SysUserControllerAuthorizationTest extends MerchantControllerTestSupport {
         verifyNoMoreInteractions(sysUserService);
         verifyNoInteractions(authService);
     }
+    @Test
+    void updatesOwnOperatorWithoutChangingTenantOrSystem() {
+        operatorUpdateRequest();
+        SysUser stored = user(TARGET_ID, CURRENT_MCH_NO);
+        when(sysUserService.getOne(any(Wrapper.class))).thenReturn(stored);
+
+        assertEquals(ApiCodeEnum.SUCCESS.getCode(), controller.update(TARGET_ID).getCode());
+
+        ArgumentCaptor<SysUser> update = ArgumentCaptor.forClass(SysUser.class);
+        verify(sysUserService).updateSysUser(update.capture());
+        assertEquals(TARGET_ID, update.getValue().getSysUserId());
+        assertEquals(CURRENT_MCH_NO, update.getValue().getBelongInfoId());
+        assertEquals(CS.SYS_TYPE.MCH, update.getValue().getSysType());
+        assertEquals("updated operator", update.getValue().getRealname());
+        assertEquals(CS.NO, update.getValue().getIsAdmin());
+        ArgumentCaptor<LambdaQueryWrapper<SysUser>> query = ArgumentCaptor.forClass(LambdaQueryWrapper.class);
+        verify(sysUserService).getOne(query.capture());
+        String sql = query.getValue().getSqlSegment();
+        assertTrue(sql.contains("sys_user_id"));
+        assertTrue(sql.contains("belong_info_id"));
+        assertTrue(sql.contains("sys_type"));
+        assertEquals(Set.of(TARGET_ID, CURRENT_MCH_NO, CS.SYS_TYPE.MCH),
+                new HashSet<>(query.getValue().getParamNameValuePairs().values()));
+        verifyNoInteractions(authService);
+    }
+
+    @Test
+    void rejectsUnmatchedOperatorBeforeAnyUpdate() {
+        operatorUpdateRequest();
+
+        BizException error = assertThrows(BizException.class, () -> controller.update(TARGET_ID));
+
+        assertEquals(ApiCodeEnum.SYS_OPERATION_FAIL_SELETE.getCode(), error.getApiRes().getCode());
+        verify(sysUserService).getOne(any(Wrapper.class));
+        verifyNoMoreInteractions(sysUserService);
+        verifyNoInteractions(authService);
+    }
+
+    private void operatorUpdateRequest() {
+        JeeUserDetails.getCurrentUserDetails().getSysUser().setIsAdmin(CS.NO);
+        JSONObject body = new JSONObject();
+        body.put("sysUserId", 999L);
+        body.put("belongInfoId", FOREIGN_MCH_NO);
+        body.put("sysType", CS.SYS_TYPE.MGR);
+        body.put("realname", "updated operator");
+        body.put("isAdmin", CS.YES);
+        body.put("state", CS.YES);
+        body.put("resetPass", false);
+        when(requestKitBean.getReqParamJSON()).thenReturn(body);
+    }
+
 }

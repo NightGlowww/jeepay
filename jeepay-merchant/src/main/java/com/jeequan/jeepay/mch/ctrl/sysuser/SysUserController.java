@@ -190,10 +190,16 @@ public class SysUserController extends CommonCtrl {
 		if (getCurrentUser().getSysUser().getIsAdmin() != CS.YES) {
             sysUser.setIsAdmin(CS.NO);
         }
-		SysUser dbRecord = sysUserService.getOne(SysUser.gw().eq(SysUser::getSysUserId, recordId).eq(SysUser::getBelongInfoId, getCurrentMchNo()));
+		SysUser dbRecord = sysUserService.getOne(SysUser.gw()
+				.eq(SysUser::getSysUserId, recordId)
+				.eq(SysUser::getBelongInfoId, getCurrentMchNo())
+				.eq(SysUser::getSysType, CS.SYS_TYPE.MCH));
 		if (dbRecord == null) {
             throw new BizException(ApiCodeEnum.SYS_OPERATION_FAIL_SELETE);
         }
+		// 完整对象绑定不能迁移操作员的租户或所属系统。
+		sysUser.setBelongInfoId(dbRecord.getBelongInfoId());
+		sysUser.setSysType(CS.SYS_TYPE.MCH);
 
 		//判断是否自己禁用自己
 		if(recordId.equals(getCurrentUser().getSysUser().getSysUserId()) && sysUser.getState() != null && sysUser.getState() == CS.PUB_DISABLE){
