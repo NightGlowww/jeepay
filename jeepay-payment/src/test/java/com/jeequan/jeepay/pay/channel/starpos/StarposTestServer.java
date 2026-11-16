@@ -15,6 +15,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -40,7 +41,11 @@ class StarposTestServer implements AutoCloseable {
     static StarposTestServer start() {
         try {
             HttpServer httpServer = HttpServer.create(new InetSocketAddress(0), 0);
-            ExecutorService executorService = Executors.newCachedThreadPool();
+            ExecutorService executorService = Executors.newCachedThreadPool(runnable -> {
+                Thread thread = new Thread(runnable, "starpos-test-server");
+                thread.setDaemon(true);
+                return thread;
+            });
             StarposTestServer testServer = new StarposTestServer(httpServer, executorService);
             httpServer.createContext("/", testServer::handle);
             httpServer.setExecutor(executorService);
@@ -65,6 +70,12 @@ class StarposTestServer implements AutoCloseable {
 
     void enqueueJson(int statusCode, String json, long delayMillis) {
         responses.add(new Response(statusCode, json, delayMillis));
+    }
+
+    CountDownLatch enqueueJsonWithDelayedBody(int statusCode, String json, long bodyDelayMillis) {
+        Response response = new Response(statusCode, json, 0L, bodyDelayMillis);
+        responses.add(response);
+        return response.headersSent;
     }
 
     List<RecordedRequest> getRequests() {
@@ -97,8 +108,13 @@ class StarposTestServer implements AutoCloseable {
         Headers headers = exchange.getResponseHeaders();
         headers.set("Content-Type", "application/json;charset=UTF-8");
         exchange.sendResponseHeaders(response.statusCode, responseBody.length);
-        exchange.getResponseBody().write(responseBody);
-        exchange.close();
+        response.headersSent.countDown();
+        try {
+            Response.delay(response.bodyDelayMillis);
+            exchange.getResponseBody().write(responseBody);
+        } finally {
+            exchange.close();
+        }
     }
 
     static class RecordedRequest {
@@ -154,14 +170,25 @@ class StarposTestServer implements AutoCloseable {
         private final int statusCode;
         private final String json;
         private final long delayMillis;
+        private final long bodyDelayMillis;
+        private final CountDownLatch headersSent = new CountDownLatch(1);
 
         private Response(int statusCode, String json, long delayMillis) {
+            this(statusCode, json, delayMillis, 0L);
+        }
+
+        private Response(int statusCode, String json, long delayMillis, long bodyDelayMillis) {
             this.statusCode = statusCode;
             this.json = json;
             this.delayMillis = delayMillis;
+            this.bodyDelayMillis = bodyDelayMillis;
         }
 
         private void delay() {
+            delay(delayMillis);
+        }
+
+        private static void delay(long delayMillis) {
             if (delayMillis <= 0L) {
                 return;
             }

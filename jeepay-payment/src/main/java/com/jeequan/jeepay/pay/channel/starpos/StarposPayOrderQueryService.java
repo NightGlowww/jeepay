@@ -130,6 +130,9 @@ public class StarposPayOrderQueryService implements IPayOrderQueryService {
         }
 
         String envelopeCode = firstNonBlank(response, "code", "retCode");
+        if (StringUtils.isBlank(envelopeCode) || conflictingCodes(response)) {
+            return unknownResult(QUERY_ERROR_CODE, "星驿付查单状态码缺失或矛盾", response.toJSONString());
+        }
         String message = message(response);
         JSONObject data = response.getJSONObject("data");
 
@@ -143,6 +146,10 @@ public class StarposPayOrderQueryService implements IPayOrderQueryService {
 
         JSONObject business = data == null ? response : data;
         String signedCode = firstNonBlank(business, "code", "retCode");
+        if (conflictingCodes(business) || (data != null && StringUtils.isNotBlank(signedCode)
+                && !StringUtils.equals(envelopeCode, signedCode))) {
+            return unknownResult(envelopeCode, "星驿付查单状态码互相矛盾", response.toJSONString());
+        }
         if (data != null && nestedVerified && !topLevelVerified) {
             if (StringUtils.isBlank(signedCode)
                     || !StringUtils.equals(envelopeCode, signedCode)) {
@@ -163,11 +170,16 @@ public class StarposPayOrderQueryService implements IPayOrderQueryService {
         if (NOT_FOUND_CODE.equals(code)) {
             return waitingResult(code, businessMessage, origin);
         }
-        if (UNKNOWN_CODE.equals(code)) {
+        if (UNKNOWN_CODE.equals(code) || "010008".equals(code)) {
             return unknownResult(code, businessMessage, origin);
         }
-        if (WAITING_CODE.equals(code) || "2".equals(status)) {
+        if (WAITING_CODE.equals(code) || (SUCCESS_CODE.equals(code) && "2".equals(status))) {
             return waitingResult(code, businessMessage, origin);
+        }
+        // 官方错误 envelope 可只有 code/msg；它来自固定 HTTPS 当前请求的响应。
+        // 一旦带业务 data 或订单绑定字段，则仍须执行下面的身份交叉校验。
+        if (!SUCCESS_CODE.equals(code) && data == null && !hasBindingFields(response)) {
+            return confirmedFailure(code, businessMessage, origin);
         }
         // 同一机构的公钥可覆盖多个订单；验签通过仍需绑定本次查询的订单。
         String threeOrderNo = firstNonBlank(business, "threeOrderNo", "THREE_ORDER_NO");
@@ -175,10 +187,13 @@ public class StarposPayOrderQueryService implements IPayOrderQueryService {
                 || !StringUtils.equals(params.getAgetId(), firstNonBlank(business, "agetId", "AGET_ID"))) {
             return unknownResult(code, "星驿付查单订单关系不匹配", origin);
         }
-        if ("0".equals(status) || "99".equals(status)) {
-            return SUCCESS_CODE.equals(code)
+        if (!SUCCESS_CODE.equals(code)) {
+            return "1".equals(status) || "e".equals(status) || "2".equals(status)
                     ? unknownResult(code, "星驿付查单结果互相矛盾", origin)
                     : confirmedFailure(code, businessMessage, origin);
+        }
+        if ("0".equals(status) || "99".equals(status)) {
+            return unknownResult(code, "星驿付查单结果互相矛盾", origin);
         }
         if (SUCCESS_CODE.equals(code) && (StringUtils.isBlank(status) || "1".equals(status) || "e".equals(status))) {
             String channelOrderId = firstNonBlank(business, "orderNo");
@@ -192,6 +207,20 @@ public class StarposPayOrderQueryService implements IPayOrderQueryService {
         }
 
         return unknownResult(code, "星驿付查单返回了未识别状态", origin);
+    }
+
+    private static boolean hasBindingFields(JSONObject response) {
+        return response.containsKey("threeOrderNo") || response.containsKey("THREE_ORDER_NO")
+                || response.containsKey("agetId") || response.containsKey("AGET_ID")
+                || response.containsKey("orderNo") || response.containsKey("txamt") || response.containsKey("amount")
+                || response.containsKey("orderStatus") || response.containsKey("status");
+    }
+
+    private static boolean conflictingCodes(JSONObject response) {
+        String code = response.getString("code");
+        String alternate = response.getString("retCode");
+        return StringUtils.isNotBlank(code) && StringUtils.isNotBlank(alternate)
+                && !StringUtils.equals(code, alternate);
     }
 
     private boolean verify(JSONObject body, StarposNormalMchParams params) {

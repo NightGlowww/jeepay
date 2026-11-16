@@ -74,11 +74,11 @@ class StarposHttpClientTest {
     void shouldPropagateConnectionTimeoutFromPost() {
         HttpClient timeoutClient = new DelegatingHttpClient(StarposHttpClient.newHttpClient()) {
             @Override
-            public <T> HttpResponse<T> send(
+            public <T> CompletableFuture<HttpResponse<T>> sendAsync(
                     HttpRequest request,
                     HttpResponse.BodyHandler<T> responseBodyHandler
-            ) throws IOException {
-                throw new HttpConnectTimeoutException("本地连接超时 fixture");
+            ) {
+                return CompletableFuture.failedFuture(new HttpConnectTimeoutException("本地连接超时 fixture"));
             }
         };
         StarposHttpClient client = new StarposHttpClient(
@@ -105,6 +105,20 @@ class StarposHttpClientTest {
                     HttpTimeoutException.class,
                     () -> client.post("/gateway/query", new JSONObject(), "LOCAL-ORDER-1002")
             );
+        }
+    }
+
+    @Test
+    void shouldBoundBodyReadAfterHeadersHaveArrived() throws Exception {
+        try (StarposTestServer server = StarposTestServer.start()) {
+            var headersSent = server.enqueueJsonWithDelayedBody(200, "{\"code\":\"00\"}", 1500L);
+            StarposHttpClient client = localClient(server, Duration.ofMillis(300));
+            long startedAt = System.nanoTime();
+            assertThrows(HttpTimeoutException.class,
+                    () -> client.post("/gateway/query", new JSONObject(), "LOCAL-BODY-DEADLINE"));
+            assertEquals(0L, headersSent.getCount(), "fixture 必须已经发送响应头");
+            assertTrue(Duration.ofNanos(System.nanoTime() - startedAt).toMillis() < 1000L,
+                    "body 停滞必须在整体 deadline 后及时退出");
         }
     }
 

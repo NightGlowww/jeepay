@@ -181,6 +181,17 @@ class StarposPayOrderQueryServiceTest {
         }
     }
 
+    @Test
+    void shouldConfirmFailureForOfficialCodeOnlyFailureEnvelope() throws Exception {
+        try (StarposTestServer server = StarposTestServer.start()) {
+            server.enqueueJson(200, "{\"code\":\"010001\",\"msg\":\"订单失败\"}");
+            ChannelRetMsg result = query(service(server), payOrder("ORDER-FAIL-ENVELOPE", 100L));
+            assertEquals(ChannelRetMsg.ChannelState.CONFIRM_FAIL, result.getChannelState());
+            assertEquals("010001", result.getChannelErrCode());
+            assertFalse(result.isNeedQuery());
+        }
+    }
+
     private static Stream<String> terminalStatuses() {
         return Stream.of("0", "1", "99");
     }

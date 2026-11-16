@@ -7,16 +7,25 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
-import java.io.InputStream;
+import java.io.ByteArrayOutputStream;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.net.http.HttpTimeoutException;
+import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Locale;
+import java.util.List;
 import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Flow;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 /**
  * 使用 JVM 默认 TLS 信任链和主机名校验的星驿付 HTTP 客户端。
@@ -75,24 +84,10 @@ public final class StarposHttpClient {
         long startedAt = System.nanoTime();
         String businessCode = "-";
         try {
-            HttpResponse<InputStream> response = httpClient.send(
-                    request,
-                    HttpResponse.BodyHandlers.ofInputStream()
-            );
-            try (InputStream responseBody = response.body()) {
-                if (response.statusCode() < 200 || response.statusCode() >= 300) {
-                    throw new IOException("星驿付响应状态异常");
-                }
-
-                byte[] bytes = responseBody.readNBytes(MAX_RESPONSE_BYTES + 1);
-                if (bytes.length > MAX_RESPONSE_BYTES) {
-                    throw new IOException("星驿付响应超过 1 MiB");
-                }
-
-                JSONObject json = parseJsonObject(bytes);
-                businessCode = Objects.toString(json.getString("code"), "-");
-                return json;
-            }
+            HttpResponse<byte[]> response = receiveResponse(request, startedAt);
+            JSONObject json = parseJsonObject(response.body());
+            businessCode = Objects.toString(json.getString("code"), "-");
+            return json;
         } finally {
             long elapsedMillis = Duration.ofNanos(System.nanoTime() - startedAt).toMillis();
             LOGGER.info(
@@ -102,6 +97,91 @@ public final class StarposHttpClient {
                     businessCode,
                     maskOrderNo(orderNo)
             );
+        }
+    }
+
+    private HttpResponse<byte[]> receiveResponse(HttpRequest request, long startedAt)
+            throws IOException, InterruptedException {
+        LimitedBodySubscriber subscriber = new LimitedBodySubscriber();
+        CompletableFuture<HttpResponse<byte[]>> response = httpClient.sendAsync(request, info -> {
+            if (info.statusCode() < 200 || info.statusCode() >= 300) {
+                subscriber.abort(new IOException("星驿付响应状态异常"));
+            }
+            return subscriber;
+        });
+        try {
+            // ofInputStream 在响应头到达时便完成；这里等待 body 完整结束，deadline 覆盖整个请求。
+            long remaining = requestTimeout.toNanos() - (System.nanoTime() - startedAt);
+            return response.get(Math.max(1L, remaining), TimeUnit.NANOSECONDS);
+        } catch (TimeoutException e) {
+            HttpTimeoutException timeout = new HttpTimeoutException("星驿付响应超过整体请求时限");
+            subscriber.abort(timeout);
+            response.cancel(true);
+            throw timeout;
+        } catch (InterruptedException e) {
+            subscriber.abort(e);
+            response.cancel(true);
+            throw e;
+        } catch (ExecutionException e) {
+            if (e.getCause() instanceof IOException ioException) {
+                throw ioException;
+            }
+            throw new IOException("星驿付请求失败", e.getCause());
+        }
+    }
+
+    /** 直接订阅网络 body，不引入阻塞 reader 线程；取消订阅会终止底层响应读取。 */
+    private static final class LimitedBodySubscriber implements HttpResponse.BodySubscriber<byte[]> {
+        private final CompletableFuture<byte[]> body = new CompletableFuture<>();
+        private final ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+        private Flow.Subscription subscription;
+
+        @Override
+        public CompletionStage<byte[]> getBody() {
+            return body;
+        }
+
+        @Override
+        public synchronized void onSubscribe(Flow.Subscription next) {
+            if (subscription != null || body.isDone()) {
+                next.cancel();
+                return;
+            }
+            subscription = next;
+            subscription.request(1);
+        }
+
+        @Override
+        public synchronized void onNext(List<ByteBuffer> items) {
+            if (body.isDone()) {
+                return;
+            }
+            for (ByteBuffer item : items) {
+                if (item.remaining() > MAX_RESPONSE_BYTES - bytes.size()) {
+                    abort(new IOException("星驿付响应超过 1 MiB"));
+                    return;
+                }
+                byte[] chunk = new byte[item.remaining()];
+                item.get(chunk);
+                bytes.writeBytes(chunk);
+            }
+            subscription.request(1);
+        }
+
+        @Override
+        public synchronized void onError(Throwable failure) {
+            body.completeExceptionally(failure);
+        }
+
+        @Override
+        public synchronized void onComplete() {
+            body.complete(bytes.toByteArray());
+        }
+
+        private synchronized void abort(Throwable failure) {
+            if (body.completeExceptionally(failure) && subscription != null) {
+                subscription.cancel();
+            }
         }
     }
 
