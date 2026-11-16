@@ -188,8 +188,7 @@ public class WxpayRefundService extends AbstractRefundService {
                 JSONObject resultJSON = null;
                 if (mchAppConfigContext.isIsvsubMch()) {
                     WxpayIsvsubMchParams isvsubMchParams = (WxpayIsvsubMchParams)configContextQueryService.queryIsvsubMchParams(mchAppConfigContext.getMchNo(), mchAppConfigContext.getAppId(), getIfCode());
-                    wxPayService.getConfig().setSubMchId(isvsubMchParams.getSubMchId());
-                    resultJSON = WxpayV3Util.refundQueryV3Isv(refundOrder.getRefundOrderId(), wxPayService);
+                    resultJSON = WxpayV3Util.refundQueryV3Isv(refundOrder.getRefundOrderId(), isvsubMchParams.getSubMchId(), wxPayService);
                 }else {
                     resultJSON = WxpayV3Util.refundQueryV3(refundOrder.getRefundOrderId(), wxPayService);
                 }
