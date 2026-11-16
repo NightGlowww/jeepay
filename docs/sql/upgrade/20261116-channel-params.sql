@@ -4,6 +4,7 @@
 -- 不修改 t_pay_interface_config 的商户/服务商实际配置，也不修改 config_page_type。
 -- 不重放历史 patch.sql；已有同名定义（包括自定义内容）保持原样。
 -- 仅向有效 JSON 数组追加；非数组、无效 JSON 或追加后超过 VARCHAR(4096) 的定义跳过。
+-- JSON_VALID 独立限制可更新的行；IF 回退值仅保护 WHERE 中其他 JSON 函数的解析。
 -- 支付宝未配置 userIdType 时由后端按 USER_ID 处理；这里不写入实际支付配置。
 -- 独立执行：mysql --default-character-set=utf8mb4 -u USER -p DATABASE < docs/sql/upgrade/20261116-channel-params.sql
 
@@ -13,6 +14,7 @@ START TRANSACTION;
 UPDATE t_pay_interface_define
 SET isv_params = JSON_ARRAY_APPEND(isv_params, '$', JSON_OBJECT('name', 'userIdType', 'desc', '用户标识类型（缺省USER_ID）', 'type', 'radio', 'verify', '', 'values', 'USER_ID,OPEN_ID', 'titles', '旧版用户ID（USER_ID）,开放账号（OPEN_ID）'))
 WHERE if_code = 'alipay'
+  AND JSON_VALID(isv_params) = 1
   AND JSON_TYPE(IF(JSON_VALID(isv_params), isv_params, JSON_ARRAY())) = 'ARRAY'
   AND JSON_CONTAINS(IF(JSON_VALID(isv_params), isv_params, JSON_ARRAY()), JSON_OBJECT('name', 'userIdType')) = 0
   AND CHAR_LENGTH(JSON_ARRAY_APPEND(IF(JSON_VALID(isv_params), isv_params, JSON_ARRAY()), '$', JSON_OBJECT('name', 'userIdType', 'desc', '用户标识类型（缺省USER_ID）', 'type', 'radio', 'verify', '', 'values', 'USER_ID,OPEN_ID', 'titles', '旧版用户ID（USER_ID）,开放账号（OPEN_ID）'))) <= 4096;
@@ -20,6 +22,7 @@ WHERE if_code = 'alipay'
 UPDATE t_pay_interface_define
 SET normal_mch_params = JSON_ARRAY_APPEND(normal_mch_params, '$', JSON_OBJECT('name', 'userIdType', 'desc', '用户标识类型（缺省USER_ID）', 'type', 'radio', 'verify', '', 'values', 'USER_ID,OPEN_ID', 'titles', '旧版用户ID（USER_ID）,开放账号（OPEN_ID）'))
 WHERE if_code = 'alipay'
+  AND JSON_VALID(normal_mch_params) = 1
   AND JSON_TYPE(IF(JSON_VALID(normal_mch_params), normal_mch_params, JSON_ARRAY())) = 'ARRAY'
   AND JSON_CONTAINS(IF(JSON_VALID(normal_mch_params), normal_mch_params, JSON_ARRAY()), JSON_OBJECT('name', 'userIdType')) = 0
   AND CHAR_LENGTH(JSON_ARRAY_APPEND(IF(JSON_VALID(normal_mch_params), normal_mch_params, JSON_ARRAY()), '$', JSON_OBJECT('name', 'userIdType', 'desc', '用户标识类型（缺省USER_ID）', 'type', 'radio', 'verify', '', 'values', 'USER_ID,OPEN_ID', 'titles', '旧版用户ID（USER_ID）,开放账号（OPEN_ID）'))) <= 4096;
@@ -27,6 +30,7 @@ WHERE if_code = 'alipay'
 UPDATE t_pay_interface_define
 SET isv_params = JSON_ARRAY_APPEND(isv_params, '$', JSON_OBJECT('name', 'wxpayPublicKeyId', 'desc', '微信支付公钥ID（公钥模式必填）', 'type', 'text', 'verify', ''))
 WHERE if_code = 'wxpay'
+  AND JSON_VALID(isv_params) = 1
   AND JSON_TYPE(IF(JSON_VALID(isv_params), isv_params, JSON_ARRAY())) = 'ARRAY'
   AND JSON_CONTAINS(IF(JSON_VALID(isv_params), isv_params, JSON_ARRAY()), JSON_OBJECT('name', 'wxpayPublicKeyId')) = 0
   AND CHAR_LENGTH(JSON_ARRAY_APPEND(IF(JSON_VALID(isv_params), isv_params, JSON_ARRAY()), '$', JSON_OBJECT('name', 'wxpayPublicKeyId', 'desc', '微信支付公钥ID（公钥模式必填）', 'type', 'text', 'verify', ''))) <= 4096;
@@ -34,6 +38,7 @@ WHERE if_code = 'wxpay'
 UPDATE t_pay_interface_define
 SET normal_mch_params = JSON_ARRAY_APPEND(normal_mch_params, '$', JSON_OBJECT('name', 'wxpayPublicKeyId', 'desc', '微信支付公钥ID（公钥模式必填）', 'type', 'text', 'verify', ''))
 WHERE if_code = 'wxpay'
+  AND JSON_VALID(normal_mch_params) = 1
   AND JSON_TYPE(IF(JSON_VALID(normal_mch_params), normal_mch_params, JSON_ARRAY())) = 'ARRAY'
   AND JSON_CONTAINS(IF(JSON_VALID(normal_mch_params), normal_mch_params, JSON_ARRAY()), JSON_OBJECT('name', 'wxpayPublicKeyId')) = 0
   AND CHAR_LENGTH(JSON_ARRAY_APPEND(IF(JSON_VALID(normal_mch_params), normal_mch_params, JSON_ARRAY()), '$', JSON_OBJECT('name', 'wxpayPublicKeyId', 'desc', '微信支付公钥ID（公钥模式必填）', 'type', 'text', 'verify', ''))) <= 4096;
@@ -41,6 +46,7 @@ WHERE if_code = 'wxpay'
 UPDATE t_pay_interface_define
 SET isv_params = JSON_ARRAY_APPEND(isv_params, '$', JSON_OBJECT('name', 'wxpayPublicKey', 'desc', '微信支付公钥（pub_key.pem，公钥模式必填）', 'type', 'file', 'verify', ''))
 WHERE if_code = 'wxpay'
+  AND JSON_VALID(isv_params) = 1
   AND JSON_TYPE(IF(JSON_VALID(isv_params), isv_params, JSON_ARRAY())) = 'ARRAY'
   AND JSON_CONTAINS(IF(JSON_VALID(isv_params), isv_params, JSON_ARRAY()), JSON_OBJECT('name', 'wxpayPublicKey')) = 0
   AND CHAR_LENGTH(JSON_ARRAY_APPEND(IF(JSON_VALID(isv_params), isv_params, JSON_ARRAY()), '$', JSON_OBJECT('name', 'wxpayPublicKey', 'desc', '微信支付公钥（pub_key.pem，公钥模式必填）', 'type', 'file', 'verify', ''))) <= 4096;
@@ -48,6 +54,7 @@ WHERE if_code = 'wxpay'
 UPDATE t_pay_interface_define
 SET normal_mch_params = JSON_ARRAY_APPEND(normal_mch_params, '$', JSON_OBJECT('name', 'wxpayPublicKey', 'desc', '微信支付公钥（pub_key.pem，公钥模式必填）', 'type', 'file', 'verify', ''))
 WHERE if_code = 'wxpay'
+  AND JSON_VALID(normal_mch_params) = 1
   AND JSON_TYPE(IF(JSON_VALID(normal_mch_params), normal_mch_params, JSON_ARRAY())) = 'ARRAY'
   AND JSON_CONTAINS(IF(JSON_VALID(normal_mch_params), normal_mch_params, JSON_ARRAY()), JSON_OBJECT('name', 'wxpayPublicKey')) = 0
   AND CHAR_LENGTH(JSON_ARRAY_APPEND(IF(JSON_VALID(normal_mch_params), normal_mch_params, JSON_ARRAY()), '$', JSON_OBJECT('name', 'wxpayPublicKey', 'desc', '微信支付公钥（pub_key.pem，公钥模式必填）', 'type', 'file', 'verify', ''))) <= 4096;
