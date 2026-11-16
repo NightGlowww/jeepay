@@ -2,12 +2,14 @@
 
 jeepay 三个平台的公网接入需要在 19216 / 19217 / 19218 前面再架一层 nginx + SSL。本文给出可直接抄的模板。
 
-## 代码层面已就绪
+## 多层代理需要分别核对
 
 - 内置 `nginx.conf` 三个 server 都已补 `X-Forwarded-Proto` / `X-Forwarded-Port` / `proxy_http_version 1.1` / WebSocket 头 / 长超时。
 - Spring Boot 已开启 `server.forward-headers-strategy: framework`。
 
-外层反代只要照下面模板写，回跳 URL / WebSocket / 微信支付 H5 redirect 都会自动拼对。
+`docs/install/include/nginx.conf` 当前用自身的 `$scheme` / `$server_port` 设置转发头。在外层终结 HTTPS、内层仍走 HTTP 时，内层会覆盖外层传来的协议和端口；如业务依赖这些头，需要在仅受信任的反代入口处配置保留原始值，并按实际链路验证，不能只添加外层模板便认定已透传。
+
+渠道通知和回跳地址还会读取数据库系统配置 `paySiteUrl`；部署后必须把它改为实际公网支付根地址，例如 `https://pay.example.com`，不带结尾 `/`。转发头不会自动修正数据库中的默认 `127.0.0.1`。
 
 ## 推荐拓扑：三个子域名
 
@@ -62,14 +64,16 @@ certbot --nginx -d admin.example.com -d mch.example.com -d pay.example.com \
 去微信 / 支付宝 / 云闪付后台，异步通知 / 回跳 URL 必须填**公网域名**，不要填内网 IP：
 
 ```
-https://pay.example.com/api/pay/notify/...
-https://pay.example.com/api/anon/paySuccess?...
+https://pay.example.com/api/pay/notify/{ifCode}[/支付订单号]
+https://pay.example.com/api/pay/return/{ifCode}[/支付订单号]
 ```
+
+这是路由形状，方括号部分表示可选路径，不能原样复制为实际回调地址。下单代码会按渠道生成相应 URL；PayPal 另有固定 Webhook 配置，见 [渠道接入](../integrate/payment-channels.md)。商户下单填写的 `notifyUrl` / `returnUrl` 是 Jeepay 向商户业务系统发送通知或回跳的目标，勿与渠道回调混用。
 
 ## 验证
 
 ```bash
-# 握手 101 + Spring Boot 能识别 https
+# 验证接口可达；HTTP 响应头不能单独证明 WebSocket 101 或转发协议正确
 curl -s -I https://admin.example.com/api/anon/auth/vercode?t=$(date +%s) | head -3
 # 收银台
 curl -s -o /dev/null -w "%{http_code}\n" https://pay.example.com/cashier/index.html

@@ -9,7 +9,7 @@ less $(ls -t /tmp/jeepay-install-*.log | head -1)
 
 ## 登录页验证码不出 / 任何 DB 操作报错
 
-99% 是 manager 连不上 MySQL 或 Redis。按下面顺序排查：
+先区分连接失败、配置未加载与 JVM/依赖异常，不能只凭验证码不显示认定数据库故障。下面示例使用 Shell 安装的容器名；主 Compose 使用 `docker compose logs manager` 等服务名。
 
 ```bash
 # 1) 三个应用是否 healthy
@@ -17,8 +17,8 @@ for c in jeepaymanager jeepaymerchant jeepaypayment; do
   echo -n "$c: "; docker inspect --format '{{.State.Health.Status}}' $c
 done
 
-# 2) manager 实际挂载的 application.yml
-docker exec jeepaymanager grep -nE "url:|host:|password:" /jeepayhomes/service/app/application.yml
+# 2) manager 实际挂载路径（不要把 password 配置打印到公共排障日志）
+docker inspect --format '{{range .Mounts}}{{println .Source "->" .Destination}}{{end}}' jeepaymanager
 
 # 3) 从 manager 容器内验证 DB / Redis 连通
 docker exec jeepaymanager getent hosts mysql redis
@@ -29,6 +29,20 @@ docker exec jeepaymanager sh -c "timeout 3 bash -c '</dev/tcp/redis/6379' && ech
 历史坑（V3.2.7 之前的老部署可能遇到）：
 - `application.yml` 里 `host: redis` / `mysql`，但容器名是 `redis6` / `mysql8` → 新版 `install.sh` 已给容器加 `--network-alias`。
 - `password: rootroot`（Compose 默认）与 `mysql_pwd=jeepaydb123456` 不一致 → 新版 `install.sh` 会自动 `sed` 替换。
+
+`Could not create connection` / `Access denied` 应核对完整异常链、数据库是否存在、账号权限和配置加载目录。容器内用服务名 `mysql`，本机直接启动 Java 则需改为该机器可达的地址；旧的 `com.mysql.jdbc.Driver` 写法也不能解释所有连接失败，现代 Connector/J 对应 `com.mysql.cj.jdbc.Driver`，项目运行配置可让驱动自动发现。不要为了排障重建已有库。
+
+旧 Issue #51 的 v2.2.0 / Java 8 日志中，Netty 初始化失败的根异常是 `availableProcessors : 0 (expected: > 0)`，不等于 MySQL 或 Redis 断连。当前 Dockerfile 使用 JRE 17；若旧镜像仍有此错误，应记录实际 Java、镜像和 CPU 限制，升级到配套版本后验证，不能给数据库改密码来修复 CPU 探测异常。
+
+## 商户支付测试报 `Connection refused`
+
+先查看 payment 启动日志并等待后再次确认它仍在运行；容器 `Up` 或脚本曾输出启动成功不等于应用已就绪。然后从**发起请求的商户后端**核对目标地址和端口。系统配置 `paySiteUrl` 默认 `http://127.0.0.1:9216`，在分容器部署中会连接商户容器自身；应按实际拓扑设置为所有调用者可达的公网支付根地址，且不带结尾 `/`。详细步骤见 [渠道接入](../integrate/payment-channels.md)。
+
+## 默认 RocketMQ 却仍看到 ActiveMQ 重连
+
+当前四份 `conf/` 模板已注释 `spring.activemq`，业务 MQ 由 `isys.mq.vender` 选择。旧安装应检查**实际挂载文件与实际镜像版本**，不要只查看新下载的模板。若确实选择 `activeMQ`，`tcp://127.0.0.1:61616` 在 Java 容器中不指向另一个 ActiveMQ 容器；应使用同网络内真实服务名并同步 MQ 配置和打包依赖。
+
+阿里云 RocketMQ 当前按 `groupIdPrefix + 系统名 + _QUEUE/_BROADCAST` 分组，隔离不同系统和消息模式。使用该方案时须在云侧创建匹配的 Group/Topic，同一个消费者组的所有实例保持一致订阅；不要让不同系统共用同一个固定 Group ID。
 
 ## 业务触发 RocketMQ 时报 `connect to x.x.x.x:10911 failed`
 
@@ -71,13 +85,7 @@ proxy_send_timeout  3600s;
 
 ## `application.yml` 变成目录而不是文件
 
-Spring Boot 容器起来但拿不到配置。原因：某次 `cp` 失败后 `docker run -v <path>:<container>` 把 host 不存在的 path 自动建成目录：
-
-```bash
-docker stop jeepaymanager jeepaymerchant jeepaypayment
-rm -rf $rootDir/service/configs
-bash uninstall.sh        # 或手工重跑 install.sh 的 [6] 步骤
-```
+Spring Boot 容器起来但拿不到配置。原因：某次 `cp` 失败后 `docker run -v <path>:<container>` 把 host 不存在的 path 自动建成目录。先通过 `docker inspect` 的 Mounts 确认实际宿主路径，停止受影响应用，备份该目录，补齐正确的 `application.yml` 文件后重建应用容器；保留数据库与 uploads。不要通过卸载全栈或删除整份配置目录处理单个挂载错误。
 
 V3.2.8+ 的 `install.sh` 每个 `cp` 都加了返回值 + 文件类型校验，失败会 `exit 1` 明确指引，不再留半成品。
 
@@ -121,7 +129,6 @@ mkdir -p $out
 docker ps -a > $out/docker-ps.txt
 for c in mysql8 redis6 rocketmq-namesrv rocketmq-broker jeepaymanager jeepaymerchant jeepaypayment nginx118; do
     docker logs --tail 200 $c > $out/log-$c.txt 2>&1
-    docker inspect $c > $out/inspect-$c.json 2>&1
 done
 docker network inspect jeepay-net > $out/network.json 2>&1
 cp $(ls -t /tmp/jeepay-install-*.log | head -1) $out/install.log 2>/dev/null
@@ -129,4 +136,4 @@ tar -czf $out.tar.gz -C /tmp "$(basename $out)"
 echo "已打包到：$out.tar.gz"
 ```
 
-把 `.tar.gz` 发维护者，能直接定位。
+日志和安装日志仍可能含商户信息、token 或历史敏感内容。分享前逐项去敏，公共 Issue 只保留与错误相关的片段；不要附带实际 `application.yml`、完整 `docker inspect` 或未经检查的压缩包。尚无经确认的私密漏洞报告入口时，遵守 [贡献指南的安全问题说明](../../CONTRIBUTING.md#九安全问题)。

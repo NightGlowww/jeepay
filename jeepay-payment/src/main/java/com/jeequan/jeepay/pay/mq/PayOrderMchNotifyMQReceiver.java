@@ -15,21 +15,18 @@
  */
 package com.jeequan.jeepay.pay.mq;
 
-import cn.hutool.core.net.url.UrlBuilder;
-import cn.hutool.core.util.CharsetUtil;
-import cn.hutool.core.util.StrUtil;
-import cn.hutool.http.HttpUtil;
 import com.jeequan.jeepay.components.mq.model.PayOrderMchNotifyMQ;
 import com.jeequan.jeepay.components.mq.vender.IMQSender;
 import com.jeequan.jeepay.core.entity.MchNotifyRecord;
-import com.jeequan.jeepay.core.exception.BizException;
+import com.jeequan.jeepay.core.model.DBApplicationConfig;
+import com.jeequan.jeepay.pay.util.OutboundHttpClient;
 import com.jeequan.jeepay.service.impl.MchNotifyRecordService;
 import com.jeequan.jeepay.service.impl.PayOrderService;
+import com.jeequan.jeepay.service.impl.SysConfigService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
-import java.util.Map;
 
 /**
  * 接收MQ消息
@@ -48,6 +45,10 @@ public class PayOrderMchNotifyMQReceiver implements PayOrderMchNotifyMQ.IMQRecei
     private MchNotifyRecordService mchNotifyRecordService;
     @Autowired
     private IMQSender mqSender;
+    @Autowired
+    private OutboundHttpClient outboundHttpClient;
+    @Autowired
+    private SysConfigService sysConfigService;
 
     @Override
     public void receive(PayOrderMchNotifyMQ.MsgPayload payload) {
@@ -72,15 +73,14 @@ public class PayOrderMchNotifyMQReceiver implements PayOrderMchNotifyMQ.IMQRecei
             String notifyUrl = record.getNotifyUrl();
             String res = "";
             try {
-                // res = HttpUtil.createPost(notifyUrl).timeout(20000).execute().body();
-
-                String host = notifyUrl.split("\\?")[0];
-                Map bodyMap = HttpUtil.decodeParamMap(notifyUrl, CharsetUtil.CHARSET_UTF_8);
-                res = HttpUtil.post(host, bodyMap, 20000);
-
+                DBApplicationConfig config = sysConfigService.getDBApplicationConfig();
+                // 联调通知只授权运营配置的固定回调路径，不能放行同一内网 origin 下的任意路径。
+                String paytestEndpoint = config == null || config.getMchSiteUrl() == null ? null
+                        : config.getMchSiteUrl() + "/api/anon/paytestNotify/payOrder";
+                res = outboundHttpClient.postNotification(notifyUrl, paytestEndpoint);
             } catch (Exception e) {
                 log.error("http error", e);
-                res = "连接["+ UrlBuilder.of(notifyUrl).getHost() +"]异常:【" + e.getMessage() + "】";
+                res = "通知连接异常";
             }
 
             //支付订单 & 第一次通知: 更新为已通知
