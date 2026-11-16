@@ -39,6 +39,9 @@ public class AlipayNormalMchParams extends NormalMchParams {
     /** appId */
     private String appId;
 
+    /** 用户标识类型：USER_ID（兼容旧应用，默认）或 OPEN_ID（开放账号体系） */
+    private String userIdType;
+
     /** privateKey */
     private String privateKey;
 
