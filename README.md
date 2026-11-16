@@ -1,3 +1,5 @@
+> 本仓库是 `NightGlowww/jeepay` 维护的 fork，保留原项目作者与 LGPL。本轮整合详情见 [47 个 issue / 17 个 PR 处置清单](docs/maintenance/20261116-upstream-reconciliation.md)，升级步骤见 [fork 升级说明](docs/maintenance/20261116-fork-upgrade.md)。配套前端使用 [NightGlowww/jeepay-ui](https://github.com/NightGlowww/jeepay-ui)。
+
 <p align="center">
   <a href="https://www.jeequan.com">
     <img src="https://jeequan.oss-cn-beijing.aliyuncs.com/jeepay/img/jeepay_logo.svg" alt="Jeepay Logo">
