@@ -92,7 +92,7 @@
 
 - 后端整合源码 `46f9145`（StarPOS 候选合并全部已完成修复），JDK 17.0.21，`mvn -B -ntp clean package`：10 个 reactor 模块成功，240 项测试，0 failure / 0 error / 0 skip。
 - 三个实际 fat JAR 均包含 Tomcat 10.1.62、gRPC 1.82.4；默认 fat JAR 不含 provided ONS。manager/merchant 使用 SDK 1.6.1，payment 保留 pls-1.3.0，未声称 SDK 版本已统一。
-- 后端 [核心 #2](https://github.com/NightGlowww/jeepay/pull/2)、[部署 #3](https://github.com/NightGlowww/jeepay/pull/3)、[依赖 #4](https://github.com/NightGlowww/jeepay/pull/4)、[权限 #5](https://github.com/NightGlowww/jeepay/pull/5)、[出站 #6](https://github.com/NightGlowww/jeepay/pull/6)、[日志 #7](https://github.com/NightGlowww/jeepay/pull/7)、[渠道 #8](https://github.com/NightGlowww/jeepay/pull/8) 均通过 Shell / Maven CI；[StarPOS #10](https://github.com/NightGlowww/jeepay/pull/10) 的精确状态以 PR 和合并后的分支 CI 为准。
+- 后端 [核心 #2](https://github.com/NightGlowww/jeepay/pull/2)、[部署 #3](https://github.com/NightGlowww/jeepay/pull/3)、[依赖 #4](https://github.com/NightGlowww/jeepay/pull/4)、[权限 #5](https://github.com/NightGlowww/jeepay/pull/5)、[出站 #6](https://github.com/NightGlowww/jeepay/pull/6)、[日志 #7](https://github.com/NightGlowww/jeepay/pull/7)、[渠道 #8](https://github.com/NightGlowww/jeepay/pull/8) 均通过 Shell / Maven CI；[StarPOS #10](https://github.com/NightGlowww/jeepay/pull/10) 也已通过 Shell / Maven CI 并合入 dev；后续合并提交检查见分支 Actions。
 - 配套前端 `00d32ef` 及治理冲突合并：三端安装与生产构建通过，商户配置 8/8，OAuth 16/16。三项 GitHub 检查 `callback`、`manager build`、`merchant build` 已通过。没有安装或执行 Playwright；原浏览器套件已移除，保留 jsdom 和手工浏览器入口。
 - 签名日志：本地工具及真实 SDK 回归 5 项通过；三个实际 Logback 配置 × 两版 SDK，通过 LoggingSystem 加载验证 6/6。全局 TRACE 正对照能检出旧敏感原文，修复配置无密钥/签名原文输出且保留安全 WARN。
 - DEV 验证只使用新建的 `jeepay-fork-sql-20261116` 一次性 MySQL 8.4.13 容器（network=none、无 host port、临时 tmpfs），不连接现有支付数据库。初始及最终整合 `init.sql` 均成功创建 23 表；StarPOS 种子重复执行各仅一条，自定义说明/参数不被覆盖。
