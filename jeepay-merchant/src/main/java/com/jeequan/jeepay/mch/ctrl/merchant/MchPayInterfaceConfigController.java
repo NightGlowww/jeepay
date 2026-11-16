@@ -153,7 +153,14 @@ public class MchPayInterfaceConfigController extends CommonCtrl {
         String ifCode = getValStringRequired("ifCode");
         String infoId = getValStringRequired("infoId");
 
+        MchApp mchApp = mchAppService.getById(infoId);
+        if (mchApp == null || !getCurrentMchNo().equals(mchApp.getMchNo())) {
+            throw new BizException("商户应用不存在或不可用");
+        }
+
         PayInterfaceConfig payInterfaceConfig = getObject(PayInterfaceConfig.class);
+        // 主键只能来自下方已校验应用的自然键查询，创建时不能接收客户端主键。
+        payInterfaceConfig.setId(null);
         payInterfaceConfig.setInfoType(CS.INFO_TYPE_MCH_APP);
         payInterfaceConfig.setInfoId(infoId);
 
